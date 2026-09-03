@@ -203,6 +203,12 @@ async function loadAllUsers() {
   return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
 }
 
+// Lecture unique du PDP d'un bâtisseur (par le mentor ou l'admin)
+async function readPDPOnce(uid) {
+  const snap = await getDoc(doc(db, "users", uid, "priv", "mea_pdp"));
+  return snap.exists() ? snap.data() : null;
+}
+
 window.AbbaSync = {
   isAdminEmail,
   logIn, logOut, watchAuth, getUserProfile,
@@ -213,5 +219,6 @@ window.AbbaSync = {
   watchMyPDP, saveMyPDP,
   watchMyRencontres, saveRencontre,
   saveSummary, loadAllSummaries, loadMySummaries,
+  watchMyPDPOnce: readPDPOnce,
   loadAllUsers,
 };

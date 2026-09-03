@@ -192,6 +192,10 @@
           <label class="field"><span>Blessures / blocages à guérir</span>
             <textarea id="s2Blessures" class="text-input" rows="2" placeholder="Ce que tu portes encore…"></textarea>
           </label>
+          <div class="partage-toggle" id="s2-partage-toggle">
+            <input type="checkbox" id="s2BlessuresPartagees">
+            <span class="partage-toggle-label">Rendre visible pour mon mentor</span>
+          </div>
         </div>
       </div>
 
@@ -443,18 +447,11 @@
       </div>
       <p class="settings-hint" style="margin:-8px 0 16px;">6 rencontres sur 6 mois — une par mois avec ton mentor.</p>
 
-      <div class="rencontres-nav" id="rencontresNav">
-        <button class="rencontre-tab active" data-mois="mois1">M1</button>
-        <button class="rencontre-tab" data-mois="mois2">M2</button>
-        <button class="rencontre-tab" data-mois="mois3">M3</button>
-        <button class="rencontre-tab" data-mois="mois4">M4</button>
-        <button class="rencontre-tab" data-mois="mois5">M5</button>
-        <button class="rencontre-tab" data-mois="mois6">M6</button>
-      </div>
+      <!-- Sélecteur du mois actif -->
+      <div class="card" id="rencontreFormZone"></div>
 
-      <div id="rencontreContent">
-        <!-- Rempli dynamiquement par app.js -->
-      </div>
+      <!-- Historique des mois verrouillés -->
+      <div id="rencontreHistorique"></div>
     </section>
 
     <!-- ================= BILAN ================= -->

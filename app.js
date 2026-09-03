@@ -186,9 +186,7 @@ async function onAuthChanged(user) {
   // Rencontres
   unsubRencontres = window.AbbaSync.watchMyRencontres(user.uid, (data) => {
     MY_RENCONTRES = data;
-    renderCurrentRencontre();
-    updateRencontreTabs();
-    updateAccueilRencontresHint();
+    renderRencontresPanel();
     updateBilan();
   });
 }
@@ -391,6 +389,21 @@ function loadPdpIntoForm() {
   setVal("s2DonsSpiris",d.s2?.donsSpiris);
   setVal("s2Croissance",d.s2?.croissance);
   setVal("s2Blessures", d.s2?.blessures);
+  setCheck("s2BlessuresPartagees", d.s2?.blessuresPartagees);
+
+  // Listener toggle partage blessures
+  const bt = document.getElementById("s2-partage-toggle");
+  if (bt) bt.addEventListener("click", () => {
+    const cb = document.getElementById("s2BlessuresPartagees");
+    cb.checked = !cb.checked;
+    bt.classList.toggle("actif", cb.checked);
+    bt.querySelector(".partage-toggle-label").textContent =
+      cb.checked ? "✓ Visible pour le mentor" : "Rendre visible pour mon mentor";
+  });
+  if (d.s2?.blessuresPartagees && bt) {
+    bt.classList.add("actif");
+    bt.querySelector(".partage-toggle-label").textContent = "✓ Visible pour le mentor";
+  }
 
   // S3 — dimensions
   DIMENSIONS.forEach(dim => {
@@ -515,6 +528,7 @@ async function savePdp() {
       donsSpiris:getVal("s2DonsSpiris"),
       croissance:getVal("s2Croissance"),
       blessures: getVal("s2Blessures"),
+      blessuresPartagees: getCheck("s2BlessuresPartagees"),
     },
     s3: {},
     s4: {
@@ -644,97 +658,102 @@ function updateAccueilPdpHint() {
 // ─────────────────────────────────────────────────────────────
 // RENCONTRES
 // ─────────────────────────────────────────────────────────────
-let CURRENT_MOIS = "mois1";
+// setupRencontresNav remplacé par renderRencontresPanel (nouveau système)
+function setupRencontresNav() { /* no-op — logique dans renderRencontresPanel */ }
+function updateRencontreTabs() { renderRencontresPanel(); }
 
-function setupRencontresNav() {
-  document.querySelectorAll(".rencontre-tab").forEach(tab => {
-    tab.addEventListener("click", () => {
-      CURRENT_MOIS = tab.dataset.mois;
-      document.querySelectorAll(".rencontre-tab").forEach(t => t.classList.remove("active"));
-      tab.classList.add("active");
-      renderCurrentRencontre();
-    });
-  });
+// ─────────────────────────────────────────────────────────────
+// RENCONTRES — nouveau système : formulaire unique + historique verrouillé
+// ─────────────────────────────────────────────────────────────
+function renderRencontresPanel() {
+  renderRencontreForm();
+  renderRencontreHistorique();
+  updateAccueilRencontresHint();
 }
 
-function updateRencontreTabs() {
-  MOIS_KEYS.forEach(k => {
-    const tab = document.querySelector(`.rencontre-tab[data-mois="${k}"]`);
-    if (tab && MY_RENCONTRES[k] && MY_RENCONTRES[k].date) tab.classList.add("done");
-  });
+// Trouver le prochain mois non encore enregistré
+function prochainMoisDisponible() {
+  return MOIS_KEYS.find(k => !MY_RENCONTRES[k]?.verrouille) || null;
 }
 
-function renderCurrentRencontre() {
-  const container = document.getElementById("rencontreContent");
-  const moisNum = MOIS_KEYS.indexOf(CURRENT_MOIS) + 1;
-  const data = MY_RENCONTRES[CURRENT_MOIS] || {};
+function renderRencontreForm() {
+  const zone = document.getElementById("rencontreFormZone");
+  const moisKey = prochainMoisDisponible();
 
-  container.innerHTML = `
-    <div class="card">
-      <div class="rencontre-header">
-        <h2>Rencontre — ${MOIS_LABELS[moisNum - 1]}</h2>
-        <p>${moisNum === 3 ? "Bilan mi-parcours inclus" : moisNum === 6 ? "Évaluation finale" : "Suivi mensuel"}</p>
-      </div>
+  if (!moisKey) {
+    zone.innerHTML = `<div class="rencontre-header-card">
+      <p class="eyebrow" style="color:var(--sage);">✓ Les 6 rencontres sont complétées</p>
+      <p class="settings-hint">Consulte ton bilan pour voir ta progression.</p>
+    </div>`;
+    return;
+  }
 
-      <label class="field"><span>Date de la rencontre</span>
-        <input type="date" class="text-input" id="r-date" value="${data.date || ""}">
-      </label>
+  const moisNum = MOIS_KEYS.indexOf(moisKey) + 1;
 
-      <label class="field"><span>Thèmes abordés</span>
-        <textarea class="text-input" rows="2" id="r-themes"
-          placeholder="Points discutés lors de cette rencontre…">${data.themes || ""}</textarea>
-      </label>
-
-      <p class="eyebrow" style="margin-top:4px;">Évaluation des 8 dimensions (1–10)</p>
-      <div class="dim-grid" id="r-dims">
-        ${DIMENSIONS.map(dim => `
-          <div class="dim-item">
-            <span class="dim-label">${dim.icone} ${dim.label}</span>
-            <div class="dim-score">
-              <input type="range" min="1" max="10" value="${data.notes8dim?.[dim.key] || 5}"
-                id="r-dim-${dim.key}" oninput="updateRDim('${dim.key}')">
-              <span class="dim-score-val" id="r-dim-val-${dim.key}">${data.notes8dim?.[dim.key] || 5}</span>
-            </div>
-          </div>
-        `).join("")}
-      </div>
-
-      <label class="field" style="margin-top:12px;"><span>Victoires et réussites du mois</span>
-        <textarea class="text-input" rows="3" id="r-victoires"
-          placeholder="Ce qui a bien marché ce mois-ci…">${data.victoires || ""}</textarea>
-      </label>
-
-      <label class="field"><span>Défis rencontrés</span>
-        <textarea class="text-input" rows="3" id="r-defis"
-          placeholder="Difficultés rencontrées…">${data.defis || ""}</textarea>
-      </label>
-
-      <div class="partage-toggle ${data.defisPartages ? "actif" : ""}" id="r-partage-toggle">
-        <input type="checkbox" id="r-defisPartages" ${data.defisPartages ? "checked" : ""}>
-        <span class="partage-toggle-label">
-          ${data.defisPartages ? "✓ Défis partagés avec le mentor" : "Partager ces défis avec mon mentor"}
-        </span>
-      </div>
-
-      <label class="field" style="margin-top:12px;"><span>Actions correctives décidées</span>
-        <textarea class="text-input" rows="3" id="r-actions"
-          placeholder="Ce que tu vas faire différemment le mois prochain…">${data.actionsCorrectves || ""}</textarea>
-      </label>
-
-      ${moisNum === 3 ? `
-        <label class="field"><span>Ajustements majeurs mi-parcours</span>
-          <textarea class="text-input" rows="3" id="r-ajustements"
-            placeholder="Points à recadrer pour la seconde moitié…">${data.ajustementsMiParcours || ""}</textarea>
-        </label>
-      ` : ""}
-
-      <button class="btn-primary" id="r-save-btn" type="button" style="margin-top:8px;"
-        onclick="saveRencontre()">Enregistrer cette rencontre</button>
-      <p class="auth-error" id="r-error"></p>
+  zone.innerHTML = `
+    <div class="rencontre-header">
+      <h2>Rencontre — ${MOIS_LABELS[moisNum - 1]}</h2>
+      <p>${moisNum === 3 ? "Bilan mi-parcours inclus" : moisNum === 6 ? "Évaluation finale" : "Suivi mensuel"}</p>
     </div>
+
+    <label class="field"><span>Date de la rencontre</span>
+      <input type="date" class="text-input" id="r-date">
+    </label>
+
+    <label class="field"><span>Thèmes abordés</span>
+      <textarea class="text-input" rows="2" id="r-themes"
+        placeholder="Points discutés lors de cette rencontre…"></textarea>
+    </label>
+
+    <p class="eyebrow" style="margin-top:4px;">Évaluation des 8 dimensions (1–10)</p>
+    <div class="dim-grid">
+      ${DIMENSIONS.map(dim => `
+        <div class="dim-item">
+          <span class="dim-label">${dim.icone} ${dim.label}</span>
+          <div class="dim-score">
+            <input type="range" min="1" max="10" value="5"
+              id="r-dim-${dim.key}" oninput="updateRDim('${dim.key}')">
+            <span class="dim-score-val" id="r-dim-val-${dim.key}">5</span>
+          </div>
+        </div>
+      `).join("")}
+    </div>
+
+    <label class="field" style="margin-top:12px;"><span>Victoires et réussites du mois</span>
+      <textarea class="text-input" rows="3" id="r-victoires"
+        placeholder="Ce qui a bien marché ce mois-ci…"></textarea>
+    </label>
+
+    <label class="field"><span>Défis rencontrés</span>
+      <textarea class="text-input" rows="3" id="r-defis"
+        placeholder="Difficultés rencontrées…"></textarea>
+    </label>
+
+    <div class="partage-toggle" id="r-partage-toggle">
+      <input type="checkbox" id="r-defisPartages">
+      <span class="partage-toggle-label">Partager ces défis avec mon mentor</span>
+    </div>
+
+    <label class="field" style="margin-top:12px;"><span>Actions correctives décidées</span>
+      <textarea class="text-input" rows="3" id="r-actions"
+        placeholder="Ce que tu vas faire différemment le mois prochain…"></textarea>
+    </label>
+
+    ${moisNum === 3 ? `
+      <label class="field"><span>Ajustements majeurs mi-parcours</span>
+        <textarea class="text-input" rows="3" id="r-ajustements"
+          placeholder="Points à recadrer pour la seconde moitié…"></textarea>
+      </label>
+    ` : ""}
+
+    <button class="btn-primary" id="r-save-btn" type="button" style="margin-top:8px;width:100%;"
+      onclick="saveRencontre('${moisKey}')">Enregistrer et verrouiller</button>
+    <p class="settings-hint" style="margin-top:6px;text-align:center;">
+      ⚠ Une fois enregistré, ce mois ne pourra plus être modifié.
+    </p>
+    <p class="auth-error" id="r-error"></p>
   `;
 
-  // Listener partage
   document.getElementById("r-partage-toggle").addEventListener("click", () => {
     const cb = document.getElementById("r-defisPartages");
     cb.checked = !cb.checked;
@@ -744,17 +763,49 @@ function renderCurrentRencontre() {
   });
 }
 
+function renderRencontreHistorique() {
+  const zone = document.getElementById("rencontreHistorique");
+  const done = MOIS_KEYS.filter(k => MY_RENCONTRES[k]?.verrouille);
+  if (!done.length) { zone.innerHTML = ""; return; }
+
+  zone.innerHTML = done.map(k => {
+    const d = MY_RENCONTRES[k];
+    const moisNum = MOIS_KEYS.indexOf(k) + 1;
+    const dimsHtml = DIMENSIONS.map(dim => {
+      const val = d.notes8dim?.[dim.key] || "—";
+      return `<span class="histo-dim">${dim.icone} <strong>${val}</strong><small>${dim.label.substring(0,5)}</small></span>`;
+    }).join("");
+    return `
+      <div class="histo-card">
+        <div class="histo-head">
+          <span class="histo-label">${MOIS_LABELS[moisNum-1]}</span>
+          <span class="histo-date">${d.date || ""}</span>
+          <span class="histo-lock">🔒</span>
+        </div>
+        <div class="histo-dims">${dimsHtml}</div>
+        ${d.victoires ? `<p class="histo-line histo-victoire">✓ ${d.victoires}</p>` : ""}
+        ${d.defis ? `<p class="histo-line histo-defi">⚠ ${d.defisPartages ? d.defis : "(défis non partagés)"}</p>` : ""}
+        ${d.actionsCorrectves ? `<p class="histo-line">→ ${d.actionsCorrectves}</p>` : ""}
+      </div>`;
+  }).join("");
+}
+
 window.updateRDim = function(key) {
-  const val = document.getElementById("r-dim-" + key).value;
-  document.getElementById("r-dim-val-" + key).textContent = val;
+  const val = document.getElementById("r-dim-" + key)?.value;
+  if (val) document.getElementById("r-dim-val-" + key).textContent = val;
 };
 
-window.saveRencontre = async function() {
-  if (!CURRENT_USER) return;
+window.saveRencontre = async function(moisKey) {
+  if (!CURRENT_USER || !moisKey) return;
   const btn = document.getElementById("r-save-btn");
+  const dateVal = document.getElementById("r-date")?.value || "";
+  if (!dateVal) {
+    document.getElementById("r-error").textContent = "La date est obligatoire.";
+    return;
+  }
   btn.textContent = "Enregistrement…"; btn.disabled = true;
 
-  const moisNum = MOIS_KEYS.indexOf(CURRENT_MOIS) + 1;
+  const moisNum = MOIS_KEYS.indexOf(moisKey) + 1;
   const notes8dim = {};
   DIMENSIONS.forEach(dim => {
     notes8dim[dim.key] = parseInt(document.getElementById("r-dim-" + dim.key)?.value) || 5;
@@ -762,33 +813,34 @@ window.saveRencontre = async function() {
   const defisPartages = document.getElementById("r-defisPartages")?.checked || false;
 
   const data = {
-    date:       document.getElementById("r-date")?.value || "",
-    themes:     document.getElementById("r-themes")?.value || "",
+    date:             dateVal,
+    themes:           document.getElementById("r-themes")?.value || "",
     notes8dim,
-    victoires:  document.getElementById("r-victoires")?.value || "",
-    defis:      document.getElementById("r-defis")?.value || "",
+    victoires:        document.getElementById("r-victoires")?.value || "",
+    defis:            document.getElementById("r-defis")?.value || "",
     defisPartages,
     actionsCorrectves: document.getElementById("r-actions")?.value || "",
+    verrouille:       true,   // ← clé du verrouillage
+    verrouilleAt:     new Date().toISOString(),
   };
   if (moisNum === 3) {
     data.ajustementsMiParcours = document.getElementById("r-ajustements")?.value || "";
   }
 
   try {
-    await window.AbbaSync.saveRencontre(CURRENT_USER.uid, CURRENT_MOIS, data);
+    await window.AbbaSync.saveRencontre(CURRENT_USER.uid, moisKey, data);
     await pushSummary();
-    btn.textContent = "✓ Enregistré";
-    setTimeout(() => { btn.textContent = "Enregistrer cette rencontre"; btn.disabled = false; }, 2000);
+    renderRencontresPanel();
   } catch (err) {
     console.error(err);
     document.getElementById("r-error").textContent = "Erreur — réessaie.";
-    btn.textContent = "Enregistrer cette rencontre"; btn.disabled = false;
+    btn.textContent = "Enregistrer et verrouiller"; btn.disabled = false;
   }
 };
 
 function updateAccueilRencontresHint() {
   const hint = document.getElementById("accueilRencontresHint");
-  const done = MOIS_KEYS.filter(k => MY_RENCONTRES[k]?.date).length;
+  const done = MOIS_KEYS.filter(k => MY_RENCONTRES[k]?.verrouille).length;
   if (done === 0) hint.textContent = "Tes 6 rencontres de suivi avec ton mentor.";
   else if (done < 6) hint.textContent = `${done} / 6 rencontres complétées.`;
   else hint.textContent = "✓ Les 6 rencontres sont complétées — consulte ton bilan !";
@@ -932,6 +984,7 @@ async function loadSuivi() {
   } else if (IS_MENTOR) {
     data = await window.AbbaSync.loadMySummaries(CURRENT_USER.email);
   }
+  SUIVI_DATA = data;
 
   if (!data.length) {
     container.innerHTML = "";
@@ -966,11 +1019,134 @@ async function loadSuivi() {
         <span>📅 PDP débuté : ${s.dateDebut || "—"}</span>
         <span>→ Prochaine : ${s.prochaineRencontre || "—"}</span>
       </div>
+      <button class="btn-secondary" style="font-size:12px;padding:7px 12px;margin-top:6px;"
+        onclick="showPdpMentor('${s.uid}')">📋 Voir le PDP</button>
     </div>`;
   }).join("")}</div>`;
 
   document.getElementById("refreshSuiviBtn").onclick = loadSuivi;
 }
+
+// Vue PDP complète pour le mentor (modale)
+window.showPdpMentor = async function(uid) {
+  const snap = await window.AbbaSync.watchMyPDPOnce(uid);
+  if (!snap) { alert("PDP non encore rempli."); return; }
+  const d = snap;
+
+  // Trouver le nom dans SUIVI_DATA
+  const s = SUIVI_DATA.find(x => x.uid === uid) || {};
+  const nom = `${s.prenom || ""} ${s.nom || ""}`.trim() || uid;
+
+  const dimsHtml = DIMENSIONS.map(dim => {
+    const v = d.s3?.[dim.key];
+    return v ? `<div class="pdp-mentor-row">
+      <dt>${dim.icone} ${dim.label}</dt>
+      <dd>${v.note || "—"}/10 — ${v.desc || ""}</dd>
+    </div>` : "";
+  }).join("");
+
+  const modulesHtml = MODULES_14.map((m, i) => {
+    const niveaux = ["—","Pas assimilé","Compris","Application partielle","Application régulière","Maîtrise"];
+    const n = d.s4?.modules?.[i] || 0;
+    return `<div class="pdp-mentor-row"><dt>${i+1}. ${m}</dt><dd>${niveaux[n] || "—"}</dd></div>`;
+  }).join("");
+
+  const html = `
+  <div class="pdp-mentor-overlay" id="pdpMentorOverlay" onclick="closePdpMentor(event)">
+    <div class="pdp-mentor-box">
+      <button class="pdp-mentor-close" onclick="document.getElementById('pdpMentorOverlay').remove()">×</button>
+      <h2 style="font-family:var(--font-display);color:var(--navy);margin:0 0 6px;">PDP — ${nom}</h2>
+      <p style="font-size:12px;color:var(--ink-soft);margin:0 0 20px;">Plan de Développement Personnel · Phase 2</p>
+
+      <div class="pdp-mentor-section">
+        <h3>S1 — Informations</h3>
+        <div class="pdp-mentor-row"><dt>Membre ABBA</dt><dd>${d.s1?.membre || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Base locale</dt><dd>${d.s1?.base || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Église</dt><dd>${d.s1?.eglise || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Début coaching</dt><dd>${d.s1?.dateDebut || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Fin prévue</dt><dd>${d.s1?.dateFin || "—"}</dd></div>
+      </div>
+
+      <div class="pdp-mentor-section">
+        <h3>S2 — Vision et Identité</h3>
+        <div class="pdp-mentor-row"><dt>Verset personnel</dt><dd>${d.s2?.verset || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Vision à 5 ans</dt><dd>${d.s2?.vision || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Mission de vie</dt><dd>${d.s2?.mission || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>MBTI</dt><dd>${d.s2?.mbti || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Forces spirituelles</dt><dd>${d.s2?.forces || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Talents</dt><dd>${d.s2?.talents || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Dons spirituels</dt><dd>${d.s2?.donsSpiris || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Domaines de croissance</dt><dd>${d.s2?.croissance || "—"}</dd></div>
+        ${d.s2?.blessuresPartagees ? `<div class="pdp-mentor-row"><dt>Blessures / blocages</dt><dd>${d.s2?.blessures || "—"}</dd></div>` : `<div class="pdp-mentor-row"><dt>Blessures / blocages</dt><dd><em style="color:var(--ink-soft);">(non partagé)</em></dd></div>`}
+      </div>
+
+      <div class="pdp-mentor-section">
+        <h3>S3 — Évaluation initiale des 8 dimensions</h3>
+        ${dimsHtml || "<p class='settings-hint'>Non rempli.</p>"}
+      </div>
+
+      <div class="pdp-mentor-section">
+        <h3>S4 — Intégration des 14 modules</h3>
+        ${modulesHtml}
+        <div class="pdp-mentor-row"><dt>Priorité 1</dt><dd>${d.s4?.prio1 || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Priorité 2</dt><dd>${d.s4?.prio2 || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Priorité 3</dt><dd>${d.s4?.prio3 || "—"}</dd></div>
+      </div>
+
+      <div class="pdp-mentor-section">
+        <h3>S5 — Ministère choisi</h3>
+        <div class="pdp-mentor-row"><dt>Ministère</dt><dd>${d.s5?.ministre || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Raisons</dt><dd>${d.s5?.raisons || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Plan M1-M2</dt><dd>${d.s5?.planM12 || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Plan M3-M4</dt><dd>${d.s5?.planM34 || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Plan M5-M6</dt><dd>${d.s5?.planM56 || "—"}</dd></div>
+      </div>
+
+      <div class="pdp-mentor-section">
+        <h3>S6 — Projet économique</h3>
+        <div class="pdp-mentor-row"><dt>Type</dt><dd>${d.s6?.typeProjet || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Description</dt><dd>${d.s6?.description || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Objectifs 6 mois</dt><dd>${d.s6?.objectifs || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Revenus visés</dt><dd>${d.s6?.revenusVises ? d.s6.revenusVises + " FCFA/mois" : "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Plan M1</dt><dd>${d.s6?.lancM1 || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Plan M2-M3</dt><dd>${d.s6?.lancM23 || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Plan M4-M6</dt><dd>${d.s6?.lancM46 || "—"}</dd></div>
+      </div>
+
+      <div class="pdp-mentor-section">
+        <h3>S8 — Leadership</h3>
+        <div class="pdp-mentor-row"><dt>Formations prévues</dt><dd>${d.s8?.formations || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Modèles</dt><dd>${d.s8?.modeles || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Opportunités</dt><dd>${d.s8?.opportunites || "—"}</dd></div>
+      </div>
+
+      <div class="pdp-mentor-section">
+        <h3>S9 — Gestion du temps</h3>
+        <div class="pdp-mentor-row"><dt>Ajustements</dt><dd>${d.s9?.ajustements || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>À réduire</dt><dd>${d.s9?.reduire || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>À augmenter</dt><dd>${d.s9?.augmenter || "—"}</dd></div>
+      </div>
+
+      <div class="pdp-mentor-section">
+        <h3>S10 — Relations</h3>
+        <div class="pdp-mentor-row"><dt>Famille</dt><dd>${d.s10?.famille || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Église</dt><dd>${d.s10?.eglise || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>ABBA</dt><dd>${d.s10?.abba || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Relations à réparer</dt><dd>${d.s10?.reparer || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Plan relationnel</dt><dd>${d.s10?.planAction || "—"}</dd></div>
+      </div>
+
+      <button class="btn-secondary" style="width:100%;margin-top:8px;"
+        onclick="document.getElementById('pdpMentorOverlay').remove()">Fermer</button>
+    </div>
+  </div>`;
+
+  document.body.insertAdjacentHTML("beforeend", html);
+};
+
+window.closePdpMentor = function(e) {
+  if (e.target.id === "pdpMentorOverlay") e.target.remove();
+};
 
 // ─────────────────────────────────────────────────────────────
 // ADMIN — mentors + assignments
