@@ -510,3 +510,23 @@ textarea.text-input{resize:vertical;min-height:60px;}
 }
 .pdp-mentor-row dt{color:var(--ink-soft);min-width:140px;flex:0 0 140px;}
 .pdp-mentor-row dd{color:var(--ink);margin:0;flex:1;}
+
+/* ===== ACCORDÉON SUIVI ===== */
+.suivi-accord{
+  border:1px solid var(--line);border-radius:var(--radius);
+  margin-bottom:10px;overflow:hidden;
+  background:var(--card-bg);
+}
+.suivi-accord-head{
+  width:100%;background:none;border:none;cursor:pointer;
+  display:flex;align-items:center;gap:10px;
+  padding:14px 16px;text-align:left;flex-wrap:wrap;
+}
+.suivi-accord-head:hover{background:var(--paper);}
+.suivi-accord-arrow{
+  margin-left:auto;font-size:14px;
+  color:var(--ink-soft);flex:0 0 auto;
+}
+.suivi-accord-body{
+  padding:0 16px 16px;border-top:1px solid var(--line);
+}

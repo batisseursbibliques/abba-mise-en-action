@@ -782,6 +782,7 @@ function renderRencontreHistorique() {
           <span class="histo-date">${d.date || ""}</span>
           <span class="histo-lock">🔒</span>
         </div>
+        ${d.themes ? `<p class="histo-line" style="font-style:italic;color:var(--ink-soft);margin-bottom:8px;">📝 ${d.themes}</p>` : ""}
         <div class="histo-dims">${dimsHtml}</div>
         ${d.victoires ? `<p class="histo-line histo-victoire">✓ ${d.victoires}</p>` : ""}
         ${d.defis ? `<p class="histo-line histo-defi">⚠ ${d.defisPartages ? d.defis : "(défis non partagés)"}</p>` : ""}
@@ -1005,27 +1006,38 @@ async function loadSuivi() {
       </div>`;
     }).join("");
 
-    return `<div class="suivi-card">
-      <div class="suivi-card-head">
+    return `<div class="suivi-accord">
+      <button class="suivi-accord-head" onclick="toggleSuivi('${s.uid}')">
         <span class="suivi-card-name">${s.prenom || ""} ${s.nom || s.email}</span>
         <span class="suivi-badge ${s.moisEnCours}">${moisLabel}</span>
+        <span class="suivi-accord-arrow" id="arrow-${s.uid}">▸</span>
+      </button>
+      <div class="suivi-accord-body" id="body-${s.uid}" style="display:none;">
+        <div class="suivi-dims">${dimsHtml}</div>
+        ${s.dernieresVictoires ? `<p style="font-size:12px;color:var(--sage);margin:6px 0 0;">✓ <em>${s.dernieresVictoires.substring(0, 120)}${s.dernieresVictoires.length > 120 ? "…" : ""}</em></p>` : ""}
+        ${s.derniersDefis ? `<p style="font-size:12px;color:var(--brick);margin:4px 0 0;">⚠ <em>${s.derniersDefis.substring(0, 120)}${s.derniersDefis.length > 120 ? "…" : ""}</em></p>` : ""}
+        <div class="suivi-meta" style="margin-top:8px;">
+          <span>📅 Débuté : ${s.dateDebut || "—"}</span>
+          <span>→ Prochain : ${s.prochaineRencontre || "—"}</span>
+        </div>
+        <button class="btn-secondary" style="font-size:12px;padding:7px 12px;margin-top:10px;width:100%;"
+          onclick="showPdpMentor('${s.uid}')">📋 Voir le PDP</button>
       </div>
-      <div class="suivi-dims">${dimsHtml}</div>
-      ${s.dernieresVictoires ? `<p style="font-size:12px;color:var(--ink-soft);margin:0;">
-        ✓ <em>${s.dernieresVictoires.substring(0, 80)}${s.dernieresVictoires.length > 80 ? "…" : ""}</em></p>` : ""}
-      ${s.derniersDefis ? `<p style="font-size:12px;color:var(--brick);margin:0;">
-        ⚠ <em>${s.derniersDefis.substring(0, 80)}${s.derniersDefis.length > 80 ? "…" : ""}</em></p>` : ""}
-      <div class="suivi-meta">
-        <span>📅 PDP débuté : ${s.dateDebut || "—"}</span>
-        <span>→ Prochaine : ${s.prochaineRencontre || "—"}</span>
-      </div>
-      <button class="btn-secondary" style="font-size:12px;padding:7px 12px;margin-top:6px;"
-        onclick="showPdpMentor('${s.uid}')">📋 Voir le PDP</button>
     </div>`;
+  }).join("")}</div>`;
   }).join("")}</div>`;
 
   document.getElementById("refreshSuiviBtn").onclick = loadSuivi;
 }
+
+window.toggleSuivi = function(uid) {
+  const body  = document.getElementById("body-" + uid);
+  const arrow = document.getElementById("arrow-" + uid);
+  if (!body) return;
+  const open = body.style.display === "none";
+  body.style.display  = open ? "" : "none";
+  arrow.textContent   = open ? "▾" : "▸";
+};
 
 // Vue PDP complète pour le mentor (modale)
 window.showPdpMentor = async function(uid) {

@@ -32,8 +32,9 @@ service cloud.firestore {
       match /priv/{doc} {
         allow read, write: if request.auth != null && request.auth.uid == uid;
         allow write: if isAdmin() && doc == "binome";
-
-        // PDP et rencontres : le mentor assigné peut lire (pas écrire)
+        // Admin peut lire tous les docs priv (pour voir le PDP)
+        allow read: if isAdmin();
+        // Mentor assigné peut lire mea_pdp et mea_rencontres
         allow read: if isMentorOf(uid) && (doc == "mea_pdp" || doc == "mea_rencontres");
       }
 
