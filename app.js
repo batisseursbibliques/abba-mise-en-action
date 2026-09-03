@@ -1025,7 +1025,6 @@ async function loadSuivi() {
       </div>
     </div>`;
   }).join("")}</div>`;
-  }).join("")}</div>`;
 
   document.getElementById("refreshSuiviBtn").onclick = loadSuivi;
 }
