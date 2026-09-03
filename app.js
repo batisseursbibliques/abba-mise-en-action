@@ -377,6 +377,7 @@ function loadPdpIntoForm() {
   // S1
   setVal("s1Membre",    d.s1?.membre);
   setVal("s1Base",      d.s1?.base);
+  setVal("s1Eglise",    d.s1?.eglise);
   setVal("s1DateDebut", d.s1?.dateDebut);
   setVal("s1DateFin",   d.s1?.dateFin);
 
@@ -500,6 +501,7 @@ async function savePdp() {
     s1: {
       membre:    getVal("s1Membre"),
       base:      getVal("s1Base"),
+      eglise:    getVal("s1Eglise"),
       dateDebut: getVal("s1DateDebut"),
       dateFin:   getVal("s1DateFin"),
     },
@@ -908,6 +910,9 @@ async function pushSummary() {
     derniersDefis:      derniereRencontre?.defisPartages ? (derniereRencontre?.defis || "") : null,
     prochaineRencontre: prochainMois || "bilan",
     pdpComplet:    Object.keys(MY_PDP).length >= 8,
+    // Champ clé : permet au mentor de filtrer ses résumés sans lire mea_assignments
+    mentorEmail:   MY_ASSIGNMENT?.mentorEmail || null,
+    mentorNom:     MY_ASSIGNMENT?.mentorNom   || null,
   };
 
   await window.AbbaSync.saveSummary(CURRENT_USER.uid, summary);

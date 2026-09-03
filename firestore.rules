@@ -86,10 +86,14 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Résumés Mise en Action : écrits par le bâtisseur, lus par admin et mentor assigné
+    // Résumés Mise en Action : écrits par le bâtisseur ou l'admin, lus par admin et mentor assigné.
+    // Le champ mentorEmail dans le document permet au mentor de filtrer sans lire mea_assignments.
     match /mea_summaries/{batisseurUid} {
-      allow write: if request.auth != null && request.auth.uid == batisseurUid;
-      allow read: if isAdmin() || isMentorOf(batisseurUid);
+      allow write: if isAdmin()
+        || (request.auth != null && request.auth.uid == batisseurUid);
+      allow read: if isAdmin()
+        || (request.auth != null && request.auth.uid == batisseurUid)
+        || (isMentor() && resource.data.mentorEmail == request.auth.token.email.lower());
     }
   }
 }

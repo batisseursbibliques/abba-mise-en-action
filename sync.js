@@ -78,16 +78,33 @@ async function removeMentor(email) {
 // Écrit par admin, lu par mentor (pour ses bâtisseurs) et par le bâtisseur lui-même.
 // ============================================================
 async function assignMentor(batisseurUid, mentorEmail, mentorUid, mentorNom, byEmail) {
+  const key = mentorEmail.trim().toLowerCase();
+  // Écrire l'assignment
   await setDoc(doc(db, "mea_assignments", batisseurUid), {
-    mentorEmail: mentorEmail.trim().toLowerCase(),
+    mentorEmail: key,
     mentorUid,
     mentorNom,
     assignedBy: byEmail,
     assignedAt: serverTimestamp(),
   });
+  // Propager mentorEmail dans mea_summaries pour que le mentor puisse filtrer
+  await setDoc(doc(db, "mea_summaries", batisseurUid), {
+    mentorEmail: key,
+    mentorNom,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+}
+
+async function unassignMentorFromSummary(batisseurUid) {
+  await setDoc(doc(db, "mea_summaries", batisseurUid), {
+    mentorEmail: null,
+    mentorNom: null,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
 }
 async function unassignMentor(batisseurUid) {
   await deleteDoc(doc(db, "mea_assignments", batisseurUid));
+  await unassignMentorFromSummary(batisseurUid);
 }
 async function getMyAssignment(batisseurUid) {
   const snap = await getDoc(doc(db, "mea_assignments", batisseurUid));
@@ -164,18 +181,15 @@ async function loadAllSummaries() {
   return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
 }
 // Le mentor charge uniquement les résumés de ses bâtisseurs
+// Utilise un champ mentorEmail stocké dans mea_summaries (pas de lecture de mea_assignments)
 async function loadMySummaries(mentorEmail) {
-  const all = await loadAllAssignments();
-  const myUids = all
-    .filter(a => a.mentorEmail === mentorEmail.trim().toLowerCase())
-    .map(a => a.batisseurUid);
-  if (!myUids.length) return [];
-  const results = [];
-  for (const uid of myUids) {
-    const snap = await getDoc(doc(db, "mea_summaries", uid));
-    if (snap.exists()) results.push({ uid, ...snap.data() });
-  }
-  return results;
+  const key = mentorEmail.trim().toLowerCase();
+  const q = query(
+    collection(db, "mea_summaries"),
+    where("mentorEmail", "==", key)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
 }
 
 // ============================================================
@@ -194,7 +208,8 @@ window.AbbaSync = {
   logIn, logOut, watchAuth, getUserProfile,
   watchAdmins,
   watchMentors, addMentor, removeMentor,
-  assignMentor, unassignMentor, getMyAssignment, loadAllAssignments,
+  assignMentor, unassignMentor, unassignMentorFromSummary,
+  getMyAssignment, loadAllAssignments,
   watchMyPDP, saveMyPDP,
   watchMyRencontres, saveRencontre,
   saveSummary, loadAllSummaries, loadMySummaries,
