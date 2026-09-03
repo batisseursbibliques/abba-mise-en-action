@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ABBA Mise en Action</title>
+<meta name="theme-color" content="#1F3B57">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ===== ÉCRAN DE CONNEXION ===== -->
+<div class="auth-screen" id="authScreen">
+  <div class="auth-box">
+    <img src="logo.png" alt="Logo ABBA" class="auth-logo">
+    <h1>Mise en Action</h1>
+    <p class="auth-sub">Phase 2 — Ton plan de développement</p>
+
+    <form id="loginForm" class="auth-form">
+      <label class="field"><span>E-mail</span>
+        <input type="email" id="loginEmail" required autocomplete="email">
+      </label>
+      <label class="field"><span>Mot de passe</span>
+        <input type="password" id="loginPassword" required autocomplete="current-password">
+      </label>
+      <p class="auth-error" id="loginError"></p>
+      <button type="submit" class="btn-primary full">Se connecter</button>
+    </form>
+
+    <p class="auth-hint">Utilise le même e-mail et le même mot de passe que sur ABBA Life — c'est le même compte, aucune nouvelle inscription nécessaire.</p>
+  </div>
+</div>
+
+<!-- ===== APPLICATION ===== -->
+<div class="app" id="app" style="display:none;">
+
+  <header class="topbar">
+    <div class="brand">
+      <img src="logo.png" alt="Logo ABBA" class="brand-logo">
+      <div class="brand-text">
+        <span class="brand-name">Mise en Action</span>
+        <span class="brand-sub">Phase 2 du Parcours Bâtisseur</span>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <button class="theme-toggle" id="themeToggle" aria-label="Changer d'apparence">
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M4.6 4.6l1.7 1.7M17.7 17.7l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.6 19.4l1.7-1.7M17.7 6.3l1.7-1.7"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- NAVIGATION HAUTE -->
+  <nav class="tabs" id="tabs" aria-label="Navigation principale">
+    <button class="tab active" data-tab="accueil">Accueil</button>
+    <button class="tab" data-tab="pdp">Mon PDP</button>
+    <button class="tab" data-tab="rencontres">Rencontres</button>
+    <button class="tab" data-tab="bilan">Bilan</button>
+    <button class="tab mentor-only admin-only" data-tab="suivi" id="tabSuivi" style="display:none;">Suivi</button>
+    <button class="tab admin-only" data-tab="admin" id="tabAdmin" style="display:none;">Admin</button>
+    <button class="tab" data-tab="reglages">Réglages</button>
+  </nav>
+
+  <main class="content">
+
+    <!-- ================= ACCUEIL ================= -->
+    <section class="panel active" id="panel-accueil">
+      <div class="panel-head">
+        <h1>Bienvenue</h1>
+      </div>
+      <p class="settings-hint" id="accueilSalut">Phase 2 — Mise en Action</p>
+
+      <div class="card" id="accueilPdpCard">
+        <p class="eyebrow">📋 Mon Plan de Développement</p>
+        <p class="settings-hint" id="accueilPdpHint">Remplis ton PDP pour démarrer ta Phase 2.</p>
+        <button class="link-btn" data-goto="pdp">Ouvrir Mon PDP →</button>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">🗓️ Rencontres mensuelles</p>
+        <p class="settings-hint" id="accueilRencontresHint">Tes 6 rencontres de suivi avec ton mentor.</p>
+        <button class="link-btn" data-goto="rencontres">Ouvrir Rencontres →</button>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">📊 Bilan final</p>
+        <p class="settings-hint">Synthèse automatique de ta progression sur 6 mois.</p>
+        <button class="link-btn" data-goto="bilan">Ouvrir Bilan →</button>
+      </div>
+
+      <div class="card mentor-only admin-only" id="accueilSuiviCard" style="display:none;">
+        <p class="eyebrow">👁️ Suivi des Bâtisseurs</p>
+        <p class="settings-hint">Vue d'ensemble des Bâtisseurs que tu accompagnes.</p>
+        <button class="link-btn" data-goto="suivi">Ouvrir Suivi →</button>
+      </div>
+
+      <div class="card settings-card">
+        <p class="eyebrow">Mon compte</p>
+        <p class="settings-hint" id="accueilEmail"></p>
+        <a class="link-btn" href="https://batisseursbibliques.org/abba-life/" style="display:block;margin-bottom:6px;">Ouvrir ABBA Life →</a>
+        <a class="link-btn" href="https://batisseursbibliques.org/abba-parcours/" style="display:block;">Ouvrir Parcours Bâtisseur →</a>
+      </div>
+    </section>
+
+    <!-- ================= MON PDP ================= -->
+    <section class="panel" id="panel-pdp">
+      <div class="panel-head">
+        <h1>Mon PDP</h1>
+        <button class="btn-primary" id="savePdpBtn" type="button">Enregistrer</button>
+      </div>
+      <p class="settings-hint" style="margin:-8px 0 16px;">Plan de Développement Personnel — Phase 2 (6 mois)</p>
+
+      <!-- Navigation des sections PDP -->
+      <div class="pdp-nav" id="pdpNav">
+        <button class="pdp-tab active" data-section="s1">S1</button>
+        <button class="pdp-tab" data-section="s2">S2</button>
+        <button class="pdp-tab" data-section="s3">S3</button>
+        <button class="pdp-tab" data-section="s4">S4</button>
+        <button class="pdp-tab" data-section="s5">S5</button>
+        <button class="pdp-tab" data-section="s6">S6</button>
+        <button class="pdp-tab" data-section="s7">S7</button>
+        <button class="pdp-tab" data-section="s8">S8</button>
+        <button class="pdp-tab" data-section="s9">S9</button>
+        <button class="pdp-tab" data-section="s10">S10</button>
+      </div>
+
+      <!-- S1 — Informations -->
+      <div class="pdp-section active" id="pdp-s1">
+        <div class="card">
+          <p class="eyebrow">S1 — Informations du Bâtisseur</p>
+          <label class="field"><span>Numéro de membre ABBA</span>
+            <input type="text" id="s1Membre" class="text-input" placeholder="Ex. ABBA-2026-001">
+          </label>
+          <label class="field"><span>Base locale / Église</span>
+            <input type="text" id="s1Base" class="text-input" placeholder="Ton église ou assemblée locale">
+          </label>
+          <label class="field"><span>Date de début du coaching</span>
+            <input type="date" id="s1DateDebut" class="text-input">
+          </label>
+          <label class="field"><span>Date de fin prévue</span>
+            <input type="date" id="s1DateFin" class="text-input">
+          </label>
+          <label class="field"><span>Mentor / Coach assigné</span>
+            <input type="text" id="s1Mentor" class="text-input" readonly placeholder="Assigné par ton coordinateur">
+          </label>
+        </div>
+      </div>
+
+      <!-- S2 — Vision et Identité -->
+      <div class="pdp-section" id="pdp-s2">
+        <div class="card">
+          <p class="eyebrow">S2 — Vision et Identité du Bâtisseur</p>
+          <label class="field"><span>Mon verset biblique personnel</span>
+            <input type="text" id="s2Verset" class="text-input" placeholder="Référence et texte du verset">
+          </label>
+          <label class="field"><span>Ma vision personnelle à 5 ans</span>
+            <textarea id="s2Vision" class="text-input" rows="4" placeholder="En 3 à 5 phrases : la personne que je veux devenir spirituellement, socialement et économiquement…"></textarea>
+          </label>
+          <label class="field"><span>Mon appel divin / Ma mission de vie</span>
+            <textarea id="s2Mission" class="text-input" rows="3" placeholder="Quel impact Dieu veut-il que tu aies dans ta génération ?"></textarea>
+          </label>
+        </div>
+        <div class="card">
+          <p class="eyebrow">Mon profil de Bâtisseur</p>
+          <label class="field"><span>Type MBTI</span>
+            <select id="s2Mbti" class="text-input">
+              <option value="">— Pas encore fait —</option>
+              <option>ISTJ</option><option>ISFJ</option><option>INFJ</option><option>INTJ</option>
+              <option>ISTP</option><option>ISFP</option><option>INFP</option><option>INTP</option>
+              <option>ESTP</option><option>ESFP</option><option>ENFP</option><option>ENTP</option>
+              <option>ESTJ</option><option>ESFJ</option><option>ENFJ</option><option>ENTJ</option>
+            </select>
+          </label>
+          <label class="field"><span>Forces spirituelles identifiées</span>
+            <textarea id="s2Forces" class="text-input" rows="2" placeholder="Ex. Foi, intercession, discernement…"></textarea>
+          </label>
+          <label class="field"><span>Dons et talents naturels</span>
+            <textarea id="s2Talents" class="text-input" rows="2" placeholder="Ex. Communication, organisation, artisanat…"></textarea>
+          </label>
+          <label class="field"><span>Dons spirituels identifiés</span>
+            <textarea id="s2DonsSpiris" class="text-input" rows="2" placeholder="Ex. Enseignement, guérison, exhortation…"></textarea>
+          </label>
+          <label class="field"><span>Domaines nécessitant croissance</span>
+            <textarea id="s2Croissance" class="text-input" rows="2" placeholder="Ex. Discipline, gestion du temps…"></textarea>
+          </label>
+          <label class="field"><span>Blessures / blocages à guérir</span>
+            <textarea id="s2Blessures" class="text-input" rows="2" placeholder="Ce que tu portes encore…"></textarea>
+          </label>
+        </div>
+      </div>
+
+      <!-- S3 — Évaluation initiale des 8 dimensions -->
+      <div class="pdp-section" id="pdp-s3">
+        <p class="settings-hint" style="margin-bottom:12px;">Évalue ton niveau actuel sur 10 pour chaque dimension. <br>1–3 = Critique · 4–6 = En développement · 7–8 = Bon · 9–10 = Excellent</p>
+        <div id="s3DimensionsContainer"></div>
+        <!-- Rempli dynamiquement par app.js pour les 8 dimensions -->
+      </div>
+
+      <!-- S4 — Intégration des 14 modules -->
+      <div class="pdp-section" id="pdp-s4">
+        <div class="card">
+          <p class="eyebrow">S4 — Intégration des 14 modules</p>
+          <p class="settings-hint">Niveau d'assimilation : 1 = Pas assimilé · 2 = Compris théoriquement · 3 = Application partielle · 4 = Application régulière · 5 = Maîtrise</p>
+          <div id="s4ModulesContainer"></div>
+          <!-- Rempli dynamiquement par app.js -->
+        </div>
+        <div class="card">
+          <p class="eyebrow">Modules à renforcer en priorité</p>
+          <label class="field"><span>Module prioritaire 1</span>
+            <input type="text" id="s4Prio1" class="text-input" placeholder="Nom du module">
+          </label>
+          <label class="field"><span>Module prioritaire 2</span>
+            <input type="text" id="s4Prio2" class="text-input" placeholder="Nom du module">
+          </label>
+          <label class="field"><span>Module prioritaire 3</span>
+            <input type="text" id="s4Prio3" class="text-input" placeholder="Nom du module">
+          </label>
+          <label class="field"><span>Plan d'action pour ces modules</span>
+            <textarea id="s4PlanAction" class="text-input" rows="3" placeholder="Comment tu vas renforcer ces modules…"></textarea>
+          </label>
+        </div>
+      </div>
+
+      <!-- S5 — Choix du ministère -->
+      <div class="pdp-section" id="pdp-s5">
+        <div class="card">
+          <p class="eyebrow">S5 — Choix et développement du ministère</p>
+          <p class="settings-hint">Quel ministère ABBA rejoins-tu ?</p>
+          <div id="s5MinistreOptions" class="check-group">
+            <label class="check-item"><input type="radio" name="s5Ministre" value="MIPS"> MIPS — Ministère d'Intercession et de Prière Stratégique</label>
+            <label class="check-item"><input type="radio" name="s5Ministre" value="MPS"> MPS — Ministère du Perfectionnement des Saints</label>
+            <label class="check-item"><input type="radio" name="s5Ministre" value="MPO"> MPO — Ministère de Protection et d'Orientation</label>
+            <label class="check-item"><input type="radio" name="s5Ministre" value="MEA"> MEA — Ministère d'Évangélisation par les Arts</label>
+            <label class="check-item"><input type="radio" name="s5Ministre" value="MBEL"> MBEL — Ministère du Bien-être, d'Entraide et de Libéralité</label>
+            <label class="check-item"><input type="radio" name="s5Ministre" value="MAF"> MAF — Ministère des Affaires et Finances</label>
+            <label class="check-item"><input type="radio" name="s5Ministre" value="DPH"> DPH — Direction des Pêches d'Hommes</label>
+          </div>
+          <label class="field" style="margin-top:12px;"><span>Raisons de ce choix (dons, passions, appel)</span>
+            <textarea id="s5Raisons" class="text-input" rows="3" placeholder="Pourquoi ce ministère te correspond…"></textarea>
+          </label>
+        </div>
+        <div class="card">
+          <p class="eyebrow">Plan d'intégration (6 mois)</p>
+          <label class="field"><span>Mois 1–2 : Observation et apprentissage</span>
+            <textarea id="s5PlanM12" class="text-input" rows="2" placeholder="Actions prévues…"></textarea>
+          </label>
+          <label class="field"><span>Mois 3–4 : Participation active</span>
+            <textarea id="s5PlanM34" class="text-input" rows="2" placeholder="Responsabilités confiées, formations…"></textarea>
+          </label>
+          <label class="field"><span>Mois 5–6 : Leadership émergent</span>
+            <textarea id="s5PlanM56" class="text-input" rows="2" placeholder="Projet personnel dans le ministère…"></textarea>
+          </label>
+        </div>
+      </div>
+
+      <!-- S6 — Projet économique -->
+      <div class="pdp-section" id="pdp-s6">
+        <div class="card">
+          <p class="eyebrow">S6 — Projet économique personnel</p>
+          <p class="settings-hint">Quel type de projet économique tu portes ?</p>
+          <div class="check-group">
+            <label class="check-item"><input type="radio" name="s6TypeProjet" value="smartgarden"> Projet ABBA existant — SmartGarden</label>
+            <label class="check-item"><input type="radio" name="s6TypeProjet" value="entrepreneurial"> Projet entrepreneurial personnel</label>
+            <label class="check-item"><input type="radio" name="s6TypeProjet" value="salarie"> Emploi salarié</label>
+            <label class="check-item"><input type="radio" name="s6TypeProjet" value="investissement"> Investissement dans le projet d'un autre Bâtisseur</label>
+            <label class="check-item"><input type="radio" name="s6TypeProjet" value="carriere"> Poursuite / développement de carrière existante</label>
+            <label class="check-item"><input type="radio" name="s6TypeProjet" value="competences"> Développement de compétences pour future activité</label>
+          </div>
+        </div>
+        <div class="card">
+          <p class="eyebrow">Description et objectifs du projet</p>
+          <label class="field"><span>Nom et description du projet</span>
+            <textarea id="s6Description" class="text-input" rows="4" placeholder="Décris ton projet en détail : quoi, comment, pour qui…"></textarea>
+          </label>
+          <label class="field"><span>Objectifs à 6 mois pour ce projet</span>
+            <textarea id="s6Objectifs" class="text-input" rows="3" placeholder="Ce que tu veux avoir accompli au bout de 6 mois…"></textarea>
+          </label>
+          <label class="field"><span>Compétences actuelles en lien avec le projet</span>
+            <div class="radio-inline">
+              <label><input type="radio" name="s6Competences" value="suffisantes"> Suffisantes</label>
+              <label><input type="radio" name="s6Competences" value="a_developper"> À développer</label>
+            </div>
+          </label>
+          <label class="field"><span>Formations techniques nécessaires</span>
+            <textarea id="s6Formations" class="text-input" rows="2" placeholder="Formations à suivre pour ce projet…"></textarea>
+          </label>
+          <label class="field"><span>Soutien ABBA sollicité</span>
+            <div class="check-group-inline">
+              <label><input type="checkbox" id="s6SoutienFormation"> Formation</label>
+              <label><input type="checkbox" id="s6SoutienFinancement"> Financement</label>
+              <label><input type="checkbox" id="s6SoutienMentorat"> Mentorat</label>
+              <label><input type="checkbox" id="s6SoutienReseau"> Réseau</label>
+            </div>
+          </label>
+        </div>
+        <div class="card">
+          <p class="eyebrow">Plan de lancement (6 mois)</p>
+          <label class="field"><span>Mois 1 — Préparation</span>
+            <textarea id="s6LancM1" class="text-input" rows="2" placeholder="Formation, étude de marché, capital…"></textarea>
+          </label>
+          <label class="field"><span>Mois 2–3 — Démarrage</span>
+            <textarea id="s6LancM23" class="text-input" rows="2" placeholder="Matériel, premiers tests, gestion…"></textarea>
+          </label>
+          <label class="field"><span>Mois 4–6 — Développement</span>
+            <textarea id="s6LancM46" class="text-input" rows="2" placeholder="Premiers revenus, ajustements, expansion…"></textarea>
+          </label>
+          <label class="field"><span>Revenus mensuels visés à 6 mois (FCFA)</span>
+            <input type="number" id="s6RevenusVises" class="text-input" placeholder="0">
+          </label>
+        </div>
+      </div>
+
+      <!-- S7 — Objectifs SMART par dimension -->
+      <div class="pdp-section" id="pdp-s7">
+        <p class="settings-hint" style="margin-bottom:12px;">Pour chaque dimension, définis un objectif SMART à 6 mois et tes actions mensuelles concrètes.</p>
+        <div id="s7SmartContainer"></div>
+        <!-- Rempli dynamiquement par app.js pour les 8 dimensions -->
+      </div>
+
+      <!-- S8 — Leadership -->
+      <div class="pdp-section" id="pdp-s8">
+        <div class="card">
+          <p class="eyebrow">S8 — Développement du leadership</p>
+          <p class="settings-hint">Auto-évaluation de tes compétences de leadership actuelles (1–10).</p>
+          <div id="s8LeadershipContainer"></div>
+          <!-- Rempli dynamiquement par app.js -->
+        </div>
+        <div class="card">
+          <p class="eyebrow">Plan de développement du leadership</p>
+          <label class="field"><span>Formations en leadership prévues</span>
+            <textarea id="s8Formations" class="text-input" rows="2" placeholder="Ex. Leadership serviteur, gestion de conflits…"></textarea>
+          </label>
+          <label class="field"><span>Modèles à étudier (leaders bibliques ou contemporains)</span>
+            <textarea id="s8Modeles" class="text-input" rows="2" placeholder="Ex. Néhémie, Paul, Nelson Mandela…"></textarea>
+          </label>
+          <label class="field"><span>Opportunités de leadership dans les 6 mois</span>
+            <textarea id="s8Opportunites" class="text-input" rows="2" placeholder="Ex. Animateur de cellule, responsable projet…"></textarea>
+          </label>
+          <label class="field"><span>Personnes à mentorer / accompagner</span>
+            <textarea id="s8Mentores" class="text-input" rows="2" placeholder="Noms ou domaines…"></textarea>
+          </label>
+        </div>
+      </div>
+
+      <!-- S9 — Gestion du temps -->
+      <div class="pdp-section" id="pdp-s9">
+        <div class="card">
+          <p class="eyebrow">S9 — Gestion du temps et priorités</p>
+          <p class="settings-hint">Répartition hebdomadaire actuelle (heures). Le total doit avoisiner 168 h.</p>
+          <label class="field"><span>Travail / Activité professionnelle</span>
+            <input type="number" id="s9Travail" class="text-input" placeholder="heures / semaine" min="0" max="168">
+          </label>
+          <label class="field"><span>Formation / Apprentissage</span>
+            <input type="number" id="s9Formation" class="text-input" placeholder="heures / semaine" min="0" max="168">
+          </label>
+          <label class="field"><span>Activités ABBA (formations, réunions, ministère)</span>
+            <input type="number" id="s9Abba" class="text-input" placeholder="heures / semaine" min="0" max="168">
+          </label>
+          <label class="field"><span>Vie spirituelle personnelle</span>
+            <input type="number" id="s9Spiritu" class="text-input" placeholder="heures / semaine" min="0" max="168">
+          </label>
+          <label class="field"><span>Famille</span>
+            <input type="number" id="s9Famille" class="text-input" placeholder="heures / semaine" min="0" max="168">
+          </label>
+          <label class="field"><span>Repos / Loisirs</span>
+            <input type="number" id="s9Repos" class="text-input" placeholder="heures / semaine" min="0" max="168">
+          </label>
+          <label class="field"><span>Sommeil</span>
+            <input type="number" id="s9Sommeil" class="text-input" placeholder="heures / semaine" min="0" max="168">
+          </label>
+          <p class="settings-hint" id="s9TotalHint" style="margin-top:4px;"></p>
+        </div>
+        <div class="card">
+          <p class="eyebrow">Projection pour les 6 mois — Optimisation du temps</p>
+          <label class="field"><span>Ajustements nécessaires</span>
+            <textarea id="s9Ajustements" class="text-input" rows="3" placeholder="Ce que tu veux changer dans ta gestion du temps…"></textarea>
+          </label>
+          <label class="field"><span>Activités à réduire ou éliminer</span>
+            <textarea id="s9Reduire" class="text-input" rows="2" placeholder="Ce qui prend du temps sans apporter de valeur…"></textarea>
+          </label>
+          <label class="field"><span>Activités à augmenter ou introduire</span>
+            <textarea id="s9Augmenter" class="text-input" rows="2" placeholder="Ce que tu veux faire davantage…"></textarea>
+          </label>
+          <label class="field"><span>Stratégies d'optimisation</span>
+            <textarea id="s9Strategies" class="text-input" rows="2" placeholder="Comment tu vas y arriver concrètement…"></textarea>
+          </label>
+        </div>
+      </div>
+
+      <!-- S10 — Gestion des relations -->
+      <div class="pdp-section" id="pdp-s10">
+        <div class="card">
+          <p class="eyebrow">S10 — Gestion des relations</p>
+          <p class="settings-hint">Cartographie relationnelle actuelle — état de tes relations dans chaque cercle.</p>
+          <label class="field"><span>Famille</span>
+            <textarea id="s10Famille" class="text-input" rows="2" placeholder="État actuel des relations familiales…"></textarea>
+          </label>
+          <label class="field"><span>Église</span>
+            <textarea id="s10Eglise" class="text-input" rows="2" placeholder="État actuel des relations dans ton église…"></textarea>
+          </label>
+          <label class="field"><span>ABBA</span>
+            <textarea id="s10Abba" class="text-input" rows="2" placeholder="Tes relations dans la communauté ABBA…"></textarea>
+          </label>
+          <label class="field"><span>Professionnelles</span>
+            <textarea id="s10Pro" class="text-input" rows="2" placeholder="Collègues, partenaires, clients…"></textarea>
+          </label>
+          <label class="field"><span>Relations à réparer / restaurer</span>
+            <textarea id="s10Reparer" class="text-input" rows="2" placeholder="Relations abîmées à réconcilier dans les 6 mois…"></textarea>
+          </label>
+          <label class="field"><span>Nouvelles relations à développer (réseau, mentorat)</span>
+            <textarea id="s10Nouvelles" class="text-input" rows="2" placeholder="Personnes à rencontrer, réseaux à rejoindre…"></textarea>
+          </label>
+        </div>
+        <div class="card">
+          <p class="eyebrow">Projection pour les 6 mois — Intelligence relationnelle</p>
+          <p class="settings-hint">Compétences relationnelles à améliorer :</p>
+          <div class="check-group">
+            <label class="check-item"><input type="checkbox" id="s10CommAssertive"> Communication assertive</label>
+            <label class="check-item"><input type="checkbox" id="s10EcouteActive"> Écoute active</label>
+            <label class="check-item"><input type="checkbox" id="s10GestionConflits"> Gestion des conflits</label>
+            <label class="check-item"><input type="checkbox" id="s10Empathie"> Empathie</label>
+            <label class="check-item"><input type="checkbox" id="s10Equipe"> Travail en équipe</label>
+            <label class="check-item"><input type="checkbox" id="s10Negociation"> Négociation</label>
+          </div>
+          <label class="field" style="margin-top:12px;"><span>Plan d'action relationnel pour les 6 mois</span>
+            <textarea id="s10PlanAction" class="text-input" rows="3" placeholder="Actions concrètes pour améliorer tes relations…"></textarea>
+          </label>
+        </div>
+      </div>
+
+    </section><!-- fin panel-pdp -->
+
+    <!-- ================= RENCONTRES ================= -->
+    <section class="panel" id="panel-rencontres">
+      <div class="panel-head">
+        <h1>Rencontres mensuelles</h1>
+      </div>
+      <p class="settings-hint" style="margin:-8px 0 16px;">6 rencontres sur 6 mois — une par mois avec ton mentor.</p>
+
+      <div class="rencontres-nav" id="rencontresNav">
+        <button class="rencontre-tab active" data-mois="mois1">M1</button>
+        <button class="rencontre-tab" data-mois="mois2">M2</button>
+        <button class="rencontre-tab" data-mois="mois3">M3</button>
+        <button class="rencontre-tab" data-mois="mois4">M4</button>
+        <button class="rencontre-tab" data-mois="mois5">M5</button>
+        <button class="rencontre-tab" data-mois="mois6">M6</button>
+      </div>
+
+      <div id="rencontreContent">
+        <!-- Rempli dynamiquement par app.js -->
+      </div>
+    </section>
+
+    <!-- ================= BILAN ================= -->
+    <section class="panel" id="panel-bilan">
+      <div class="panel-head">
+        <h1>Bilan final</h1>
+      </div>
+      <p class="settings-hint" style="margin:-8px 0 16px;">Synthèse automatique de ta progression sur les 6 mois.</p>
+
+      <div class="card" id="bilanNotDisponible">
+        <p class="eyebrow">Bilan pas encore disponible</p>
+        <p class="settings-hint">Le bilan se génère automatiquement après ta rencontre du Mois 6. Continue ton chemin !</p>
+      </div>
+
+      <div id="bilanContent" style="display:none;">
+        <!-- Tableau comparatif début vs fin, généré par app.js -->
+      </div>
+    </section>
+
+    <!-- ================= SUIVI (mentor + admin) ================= -->
+    <section class="panel" id="panel-suivi">
+      <div class="panel-head">
+        <h1>Suivi</h1>
+        <button class="btn-secondary" id="refreshSuiviBtn">Actualiser</button>
+      </div>
+      <p class="settings-hint" style="margin:-8px 0 16px;">Vue d'ensemble des Bâtisseurs que tu accompagnes.</p>
+
+      <div class="card">
+        <div id="suiviTable">
+          <!-- Tableau généré par app.js -->
+        </div>
+        <p class="empty-hint" id="suiviEmpty">Aucun Bâtisseur assigné pour l'instant.</p>
+      </div>
+    </section>
+
+    <!-- ================= ADMIN ================= -->
+    <section class="panel" id="panel-admin">
+      <div class="panel-head">
+        <h1>Administration</h1>
+      </div>
+
+      <!-- Gestion des mentors -->
+      <div class="card">
+        <p class="eyebrow">Mentors actifs</p>
+        <p class="settings-hint">Les mentors peuvent voir les Bâtisseurs qui leur sont assignés.</p>
+        <div id="mentorsList"></div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px;">
+          <select id="adminMentorSelect" class="text-input">
+            <option value="">— Choisir un Bâtisseur à nommer mentor —</option>
+          </select>
+          <button class="btn-primary" id="addMentorBtn" type="button">Nommer comme mentor</button>
+        </div>
+        <p class="auth-error" id="mentorError"></p>
+      </div>
+
+      <!-- Assignments -->
+      <div class="card">
+        <p class="eyebrow">Assigner un mentor à un Bâtisseur</p>
+        <p class="settings-hint">Choisis le Bâtisseur, puis le mentor qui l'accompagnera.</p>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <select id="assignBatisseur" class="text-input">
+            <option value="">— Bâtisseur —</option>
+          </select>
+          <select id="assignMenteur" class="text-input">
+            <option value="">— Mentor —</option>
+          </select>
+          <button class="btn-primary" id="assignBtn" type="button">Assigner</button>
+        </div>
+        <p class="auth-error" id="assignError"></p>
+      </div>
+
+      <!-- Liste des assignments actuels -->
+      <div class="card">
+        <p class="eyebrow">Assignments actuels</p>
+        <div id="assignmentsList"></div>
+        <p class="empty-hint" id="assignmentsEmpty">Aucun assignment pour l'instant.</p>
+      </div>
+    </section>
+
+    <!-- ================= RÉGLAGES ================= -->
+    <section class="panel" id="panel-reglages">
+      <div class="panel-head">
+        <h1>Réglages</h1>
+      </div>
+
+      <div class="card settings-card">
+        <p class="eyebrow">Mon compte</p>
+        <p class="settings-hint" id="accountEmailHint"></p>
+        <a class="link-btn" href="https://batisseursbibliques.org/abba-life/" style="display:block;margin-bottom:6px;">Ouvrir ABBA Life →</a>
+        <a class="link-btn" href="https://batisseursbibliques.org/abba-parcours/" style="display:block;margin-bottom:10px;">Ouvrir Parcours Bâtisseur →</a>
+        <button class="btn-secondary" id="logoutBtn">Se déconnecter</button>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- NAVIGATION BASSE (mobile) -->
+  <nav class="bottom-nav" aria-hidden="true">
+    <button class="bnav-btn active" data-tab="accueil">
+      <svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 11 L12 4 L20 11 M6 10 V20 H18 V10" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+      <span>Accueil</span>
+    </button>
+    <button class="bnav-btn" data-tab="pdp">
+      <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 4 H18 V20 L12 17 L6 20 Z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+      <span>Mon PDP</span>
+    </button>
+    <button class="bnav-btn" data-tab="rencontres">
+      <svg viewBox="0 0 24 24" width="20" height="20"><rect x="4" y="4" width="16" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 2 V6 M16 2 V6 M4 10 H20" stroke="currentColor" stroke-width="1.5"/></svg>
+      <span>Rencontres</span>
+    </button>
+    <button class="bnav-btn" data-tab="bilan">
+      <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 20 V10 M12 20 V4 M18 20 V13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      <span>Bilan</span>
+    </button>
+    <button class="bnav-btn mentor-only admin-only" data-tab="suivi" id="bnavSuivi" style="display:none;">
+      <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="9" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="17" cy="8" r="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4 19 C4 15 6.5 13 9 13 C11.5 13 14 15 14 19 M14 13 C15 13 20 14 20 19" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+      <span>Suivi</span>
+    </button>
+    <button class="bnav-btn admin-only" data-tab="admin" id="bnavAdmin" style="display:none;">
+      <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4 20 C4 16 7.6 13 12 13 C16.4 13 20 16 20 20" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M18 3 L20 5 L15 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <span>Admin</span>
+    </button>
+    <button class="bnav-btn" data-tab="reglages">
+      <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 3 V6 M12 18 V21 M3 12 H6 M18 12 H21 M5.6 5.6 L7.8 7.8 M16.2 16.2 L18.4 18.4 M18.4 5.6 L16.2 7.8 M7.8 16.2 L5.6 18.4" stroke="currentColor" stroke-width="1.6"/></svg>
+      <span>Réglages</span>
+    </button>
+  </nav>
+
+</div><!-- fin #app -->
+
+<script type="module" src="sync.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
