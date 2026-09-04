@@ -150,6 +150,12 @@ async function onAuthChanged(user) {
   document.getElementById("accueilEmail").textContent = hint;
   document.getElementById("accountEmailHint").textContent = hint;
 
+  // Appliquer immédiatement les rôles admin bootstrap (sans attendre Firebase)
+  if (window.AbbaSync.isAdminEmail(user.email)) {
+    IS_ADMIN = true;
+    applyRoles();
+  }
+
   // Charger profil utilisateur
   const profile = await window.AbbaSync.getUserProfile(user.uid) || {};
   document.getElementById("accueilSalut").textContent =
@@ -161,14 +167,14 @@ async function onAuthChanged(user) {
     document.getElementById("s1Mentor").value = MY_ASSIGNMENT.mentorNom || MY_ASSIGNMENT.mentorEmail;
   }
 
-  // Admins
+  // Admins (listener — pour les admins dynamiques non-bootstrap)
   unsubAdmins = window.AbbaSync.watchAdmins((emails) => {
     const isBootstrap = window.AbbaSync.isAdminEmail(user.email);
     IS_ADMIN = isBootstrap || emails.map(e => e.toLowerCase()).includes(user.email.toLowerCase());
     applyRoles();
   });
 
-  // Mentors — vérifier si l'utilisateur est mentor
+  // Mentors
   unsubMentors = window.AbbaSync.watchMentors((list) => {
     ALL_MENTORS = list;
     IS_MENTOR = list.some(m => m.email.toLowerCase() === user.email.toLowerCase());
@@ -189,6 +195,8 @@ async function onAuthChanged(user) {
     renderRencontresPanel();
     updateBilan();
   });
+  // Appel initial si pas encore de données (données vides = listener peut ne pas se déclencher)
+  renderRencontresPanel();
 }
 
 function applyRoles() {
@@ -208,6 +216,8 @@ function applyRoles() {
     document.getElementById("tabAdmin").style.display = "";
     document.getElementById("bnavAdmin").style.display = "";
   }
+  // Rafraîchir le panneau rencontres si les données sont déjà là
+  if (Object.keys(MY_RENCONTRES).length || CURRENT_USER) renderRencontresPanel();
 }
 
 // ─────────────────────────────────────────────────────────────
