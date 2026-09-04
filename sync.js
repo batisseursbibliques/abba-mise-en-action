@@ -198,9 +198,20 @@ async function loadMySummaries(mentorEmail) {
 // + /mea_summaries pour savoir qui a un PDP.
 // ============================================================
 async function loadAllUsers() {
-  // Charge les profils depuis /summaries (déjà remplis par ABBA Life / Parcours)
-  const snap = await getDocs(collection(db, "summaries"));
-  return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+  // Charge depuis /summaries (ABBA Life) + /users directement
+  // pour couvrir tous les comptes même sans activité ABBA Life
+  const [summSnap, usersSnap] = await Promise.all([
+    getDocs(collection(db, "summaries")),
+    getDocs(collection(db, "users")),
+  ]);
+  const map = {};
+  // D'abord les profils /users (source de vérité pour nom/prénom/email)
+  usersSnap.docs.forEach(d => { map[d.id] = { uid: d.id, ...d.data() }; });
+  // Compléter avec summaries si le profil /users est incomplet
+  summSnap.docs.forEach(d => {
+    if (!map[d.id]) map[d.id] = { uid: d.id, ...d.data() };
+  });
+  return Object.values(map).filter(u => u.email || u.nom || u.prenom);
 }
 
 // Lecture unique du PDP d'un bâtisseur (par le mentor ou l'admin)

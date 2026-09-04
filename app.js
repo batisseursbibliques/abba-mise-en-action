@@ -195,8 +195,6 @@ async function onAuthChanged(user) {
     renderRencontresPanel();
     updateBilan();
   });
-  // Appel initial si pas encore de données (données vides = listener peut ne pas se déclencher)
-  renderRencontresPanel();
 }
 
 function applyRoles() {
@@ -216,8 +214,6 @@ function applyRoles() {
     document.getElementById("tabAdmin").style.display = "";
     document.getElementById("bnavAdmin").style.display = "";
   }
-  // Rafraîchir le panneau rencontres si les données sont déjà là
-  if (Object.keys(MY_RENCONTRES).length || CURRENT_USER) renderRencontresPanel();
 }
 
 // ─────────────────────────────────────────────────────────────
