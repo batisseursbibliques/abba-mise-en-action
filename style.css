@@ -403,9 +403,8 @@ textarea.text-input{resize:vertical;min-height:60px;}
 
 /* ===== AUTH ===== */
 .auth-screen{
-  position:fixed;inset:0;z-index:200;
-  display:flex;align-items:center;justify-content:center;
-  background:var(--cream);padding:24px;overflow-y:auto;
+  min-height:100vh;display:flex;align-items:center;justify-content:center;
+  background:var(--cream);padding:24px;
 }
 .auth-box{
   width:100%;max-width:380px;background:var(--card-bg);
