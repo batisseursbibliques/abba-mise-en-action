@@ -11,7 +11,7 @@ import {
 import {
   getFirestore, doc, getDoc, setDoc, deleteDoc,
   onSnapshot, serverTimestamp, collection, getDocs, query, where,
-  enableIndexedDbPersistence,
+  enableIndexedDbPersistence, deleteField, writeBatch,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { firebaseConfig, ADMIN_EMAILS } from "./firebase-config.js";
 
@@ -57,6 +57,13 @@ function watchAdmins(callback) {
 // /mea_mentors/{email} — { uid, nom, email, createdBy, createdAt }
 // Créés et supprimés par les admins uniquement.
 // ============================================================
+// Savoir si MOI je suis mentor : on lit seulement ma propre fiche (la liste complète est réservée aux coordinateurs)
+function watchMyMentorRole(email, callback) {
+  return onSnapshot(doc(db, "mea_mentors", String(email).trim().toLowerCase()), (snap) => {
+    callback(snap.exists());
+  }, (err) => { console.error("watchMyMentorRole:", err); callback(false); });
+}
+// Liste complète des mentors : coordinateurs seulement
 function watchMentors(callback) {
   return onSnapshot(collection(db, "mea_mentors"), (snap) => {
     callback(snap.docs.map(d => ({ email: d.id, ...d.data() })));
@@ -116,44 +123,87 @@ async function loadAllAssignments() {
 }
 
 // ============================================================
+// CONFIDENTIALITÉ GARANTIE PAR LE SERVEUR
+// Deux documents par bâtisseur :
+//   /users/{uid}/priv/mea_pdp, mea_rencontres → PARTAGÉS : lisibles par le mentor affecté et le suivi.
+//                                                 Ils ne contiennent un texte sensible (blessures, défis)
+//                                                 QUE si le bâtisseur a coché « partager ».
+//   /users/{uid}/priv/mea_prive               → PRIVÉ : lisible par le bâtisseur seul (règles Firestore).
+//                                                 Il garde toujours le texte complet.
+// Ainsi le mentor ne peut pas lire un texte non partagé, même en contournant l'écran.
+// ============================================================
+function privRef(uid, nom) { return doc(db, "users", uid, "priv", nom); }
+
+// Écoute deux documents et rend à l'application la vue complète (partagé + privé) du bâtisseur
+function watchSharedAndPrive(uid, sharedName, fusion, callback) {
+  let shared = {}, prive = {};
+  const emit = () => callback(fusion(shared, prive));
+  const u1 = onSnapshot(privRef(uid, sharedName), (snap) => { shared = snap.exists() ? snap.data() : {}; emit(); },
+    (err) => console.error("watch " + sharedName + ":", err));
+  const u2 = onSnapshot(privRef(uid, "mea_prive"), (snap) => { prive = snap.exists() ? snap.data() : {}; emit(); },
+    (err) => console.error("watch mea_prive:", err));
+  return () => { u1(); u2(); };
+}
+
+// ============================================================
 // PDP — Plan de Développement Personnel
-// /users/{uid}/priv/mea_pdp — toutes les sections initiales (S1–S8, S16, S17)
-// Écrit par le bâtisseur, lu par admin et mentor assigné (via mea_summaries).
+// /users/{uid}/priv/mea_pdp — toutes les sections (partagées avec le mentor)
+// /users/{uid}/priv/mea_prive — { blessures } : jamais lisible par le mentor
 // ============================================================
 function watchMyPDP(uid, callback) {
-  return onSnapshot(doc(db, "users", uid, "priv", "mea_pdp"), (snap) => {
-    callback(snap.exists() ? snap.data() : {});
-  }, (err) => console.error("watchMyPDP:", err));
+  return watchSharedAndPrive(uid, "mea_pdp", (shared, prive) => {
+    if (prive.blessures === undefined) return shared;
+    return { ...shared, s2: { ...(shared.s2 || {}), blessures: prive.blessures } };
+  }, callback);
 }
 async function saveMyPDP(uid, data) {
-  await setDoc(doc(db, "users", uid, "priv", "mea_pdp"), {
-    ...data, updatedAt: serverTimestamp(),
-  }, { merge: true });
+  const s2 = data.s2 || null;
+  const blessures = s2 ? (s2.blessures || "") : null;
+  const partage = !!(s2 && s2.blessuresPartagees);
+  const shared = { ...data, updatedAt: serverTimestamp() };
+  if (s2) {
+    const { blessures: _prive, ...s2Public } = s2;
+    // Le texte n'est copié dans le document partagé que si la personne l'a choisi ; sinon on l'y efface
+    shared.s2 = { ...s2Public, blessures: partage ? blessures : deleteField() };
+  }
+  const lot = writeBatch(db);
+  if (s2) lot.set(privRef(uid, "mea_prive"), { blessures, updatedAt: serverTimestamp() }, { merge: true });
+  lot.set(privRef(uid, "mea_pdp"), shared, { merge: true });
+  await lot.commit();
 }
 
 // ============================================================
 // RENCONTRES MENSUELLES
-// /users/{uid}/priv/mea_rencontres — { mois1: {...}, mois2: {...}, ... }
-// Un objet par mois, jamais écrasé — merge: true garantit l'historique.
+// /users/{uid}/priv/mea_rencontres — { mois1: {...}, ... } (partagé ; « defis » seulement si defisPartages)
+// /users/{uid}/priv/mea_prive      — { rencontres: { mois1: { defis } } } (privé)
 //
 // Structure d'une rencontre :
-// {
-//   date, themesAbordes, notes8dim: { esprit, psychologie, physique,
-//   subsistance, education, profession, finance, societe },
-//   victoires, defis, actionsCorrectves,
-//   defisPartages: true/false  (décidé par le bâtisseur)
-// }
+// { date, themes, notes8dim: {...}, victoires, defis, defisPartages (choix du bâtisseur),
+//   actionsCorrectves, verrouille, verrouilleAt }
 // ============================================================
 function watchMyRencontres(uid, callback) {
-  return onSnapshot(doc(db, "users", uid, "priv", "mea_rencontres"), (snap) => {
-    callback(snap.exists() ? snap.data() : {});
-  }, (err) => console.error("watchMyRencontres:", err));
+  return watchSharedAndPrive(uid, "mea_rencontres", (shared, prive) => {
+    const out = { ...shared };
+    for (const [k, r] of Object.entries(prive.rencontres || {})) {
+      if (out[k] && r && r.defis !== undefined) out[k] = { ...out[k], defis: r.defis };
+    }
+    return out;
+  }, callback);
 }
 async function saveRencontre(uid, moisKey, data) {
   // moisKey = "mois1" … "mois6"
-  await setDoc(doc(db, "users", uid, "priv", "mea_rencontres"), {
-    [moisKey]: { ...data, updatedAt: serverTimestamp() },
+  const { defis, ...autres } = data;
+  const texte = defis || "";
+  const partage = !!autres.defisPartages;
+  const lot = writeBatch(db);
+  lot.set(privRef(uid, "mea_prive"), {
+    rencontres: { [moisKey]: { defis: texte, updatedAt: serverTimestamp() } },
+    updatedAt: serverTimestamp(),
   }, { merge: true });
+  lot.set(privRef(uid, "mea_rencontres"), {
+    [moisKey]: { ...autres, defis: partage ? texte : deleteField(), updatedAt: serverTimestamp() },
+  }, { merge: true });
+  await lot.commit();
 }
 
 // ============================================================
@@ -220,11 +270,17 @@ async function readPDPOnce(uid) {
   return snap.exists() ? snap.data() : null;
 }
 
+// Compte de paiement du Parcours (formation/{uid}/compte/paiement) : la Mise en Action s'ouvre une fois le total payé
+async function getComptePaiement(uid) {
+  const snap = await getDoc(doc(db, "formation", uid, "compte", "paiement"));
+  return snap.exists() ? snap.data() : null;
+}
 window.AbbaSync = {
+  getComptePaiement,
   isAdminEmail,
   logIn, logOut, watchAuth, getUserProfile,
   watchAdmins,
-  watchMentors, addMentor, removeMentor,
+  watchMyMentorRole, watchMentors, addMentor, removeMentor,
   assignMentor, unassignMentor, unassignMentorFromSummary,
   getMyAssignment, loadAllAssignments,
   watchMyPDP, saveMyPDP,

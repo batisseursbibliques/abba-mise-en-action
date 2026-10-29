@@ -64,7 +64,9 @@ let SUIVI_DATA     = [];   // résumés chargés pour le mentor/admin
 let unsubAdmins    = null;
 let unsubPDP       = null;
 let unsubRencontres = null;
-let unsubMentors   = null;
+let unsubMentors   = null;   // liste complète des mentors (coordinateurs seulement)
+let unsubMyRole    = null;   // ma propre fiche de mentor (tout le monde)
+let ADMIN_OUVERT   = false;  // vrai une fois l'écran Admin chargé
 
 // ── Init ───────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
@@ -132,11 +134,13 @@ function traduireErreur(err) {
 
 async function onAuthChanged(user) {
   // Nettoyer les listeners
-  [unsubAdmins, unsubPDP, unsubRencontres, unsubMentors].forEach(fn => fn && fn());
-  unsubAdmins = unsubPDP = unsubRencontres = unsubMentors = null;
+  [unsubAdmins, unsubPDP, unsubRencontres, unsubMentors, unsubMyRole].forEach(fn => fn && fn());
+  unsubAdmins = unsubPDP = unsubRencontres = unsubMentors = unsubMyRole = null;
+  ALL_MENTORS = [];
 
   if (!user) {
-    CURRENT_USER = null; IS_ADMIN = false; IS_MENTOR = false;
+    CURRENT_USER = null; IS_ADMIN = false; IS_MENTOR = false; ADMIN_OUVERT = false;
+    const verrou0 = document.getElementById("paiementLock"); if (verrou0) verrou0.remove();
     document.getElementById("authScreen").style.display = "flex";
     document.getElementById("app").style.display = "none";
     return;
@@ -145,6 +149,26 @@ async function onAuthChanged(user) {
   CURRENT_USER = user;
   document.getElementById("authScreen").style.display = "none";
   document.getElementById("app").style.display = "";
+  const verrou = document.getElementById("paiementLock");
+  if (verrou) verrou.remove();
+
+  // Paiement : la Mise en Action s'ouvre une fois les 5 000 F du Parcours payés (sans compte de paiement : pas de blocage)
+  try {
+    const cp = await window.AbbaSync.getComptePaiement(user.uid);
+    if (cp && cp.actif !== false && Number(cp.paye || 0) < Number(cp.total ?? 5000)) {
+      document.getElementById("app").style.display = "none";
+      const box = document.createElement("div");
+      box.id = "paiementLock";
+      box.style.cssText = "max-width:520px;margin:12vh auto;padding:24px;text-align:center;";
+      box.innerHTML = `<h2>🔒 Mise en Action</h2>
+        <p>La Mise en Action s’ouvre une fois les ${Number(cp.total ?? 5000).toLocaleString("fr-FR")} F du Parcours payés.</p>
+        <p><strong>Versé : ${Number(cp.paye || 0).toLocaleString("fr-FR")} F sur ${Number(cp.total ?? 5000).toLocaleString("fr-FR")} F.</strong></p>
+        <p>Termine ton paiement dans le Parcours Bâtisseur (carte « Mon paiement » de l’accueil), puis reviens ici.</p>
+        <p><a href="../ABBA-Parcours/">← Retour au Parcours Bâtisseur</a></p>`;
+      document.body.appendChild(box);
+      return;
+    }
+  } catch (e) { /* en cas d'erreur de lecture, on n'empêche pas l'accès */ }
 
   const hint = `Connecté(e) en tant que ${user.displayName || user.email}`;
   document.getElementById("accueilEmail").textContent = hint;
@@ -154,6 +178,7 @@ async function onAuthChanged(user) {
   if (window.AbbaSync.isAdminEmail(user.email)) {
     IS_ADMIN = true;
     applyRoles();
+    startAllMentorsList();
   }
 
   // Charger profil utilisateur
@@ -172,12 +197,13 @@ async function onAuthChanged(user) {
     const isBootstrap = window.AbbaSync.isAdminEmail(user.email);
     IS_ADMIN = isBootstrap || emails.map(e => e.toLowerCase()).includes(user.email.toLowerCase());
     applyRoles();
+    if (IS_ADMIN) startAllMentorsList();
   });
 
   // Mentors
-  unsubMentors = window.AbbaSync.watchMentors((list) => {
-    ALL_MENTORS = list;
-    IS_MENTOR = list.some(m => m.email.toLowerCase() === user.email.toLowerCase());
+  // Suis-je mentor ? On lit seulement ma propre fiche (les autres mentors ne sont visibles que des coordinateurs)
+  unsubMyRole = window.AbbaSync.watchMyMentorRole(user.email, (estMentor) => {
+    IS_MENTOR = !!estMentor;
     applyRoles();
   });
 
@@ -194,6 +220,16 @@ async function onAuthChanged(user) {
     MY_RENCONTRES = data;
     renderRencontresPanel();
     updateBilan();
+  });
+}
+
+// Liste complète des mentors : seulement pour les coordinateurs (les règles de sécurité l'exigent aussi)
+function startAllMentorsList() {
+  if (unsubMentors) return;
+  unsubMentors = window.AbbaSync.watchMentors((list) => {
+    ALL_MENTORS = list;
+    // Si l'écran Admin est déjà ouvert, on le rafraîchit avec la liste qui vient d'arriver
+    if (ADMIN_OUVERT) { renderMentorsList(); renderMentorSelect(); renderAssignSelects(); }
   });
 }
 
@@ -969,9 +1005,8 @@ async function pushSummary() {
     derniersDefis:      derniereRencontre?.defisPartages ? (derniereRencontre?.defis || "") : null,
     prochaineRencontre: prochainMois || "bilan",
     pdpComplet:    Object.keys(MY_PDP).length >= 8,
-    // Champ clé : permet au mentor de filtrer ses résumés sans lire mea_assignments
-    mentorEmail:   MY_ASSIGNMENT?.mentorEmail || null,
-    mentorNom:     MY_ASSIGNMENT?.mentorNom   || null,
+    // mentorEmail / mentorNom ne sont PAS écrits ici : le coordinateur les pose lors de l'affectation
+    // (les règles de sécurité refusent qu'un bâtisseur les modifie lui-même).
   };
 
   await window.AbbaSync.saveSummary(CURRENT_USER.uid, summary);
@@ -1171,6 +1206,7 @@ window.closePdpMentor = function(e) {
 async function loadAdmin() {
   ALL_USERS = await window.AbbaSync.loadAllUsers();
   ALL_ASSIGNMENTS = await window.AbbaSync.loadAllAssignments();
+  ADMIN_OUVERT = true;
   renderMentorsList();
   renderMentorSelect();
   renderAssignSelects();

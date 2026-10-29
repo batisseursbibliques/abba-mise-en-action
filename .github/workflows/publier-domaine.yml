@@ -1,0 +1,69 @@
+name: Publier sur batisseursbibliques.org
+
+# Le domaine batisseursbibliques.org est servi par Firebase Hosting (projet abba-g, dépôt abba-gestion).
+# Ce dépôt reste la SEULE source de l'app : à chaque envoi sur main, ses fichiers sont copiés
+# automatiquement dans abba-gestion/public/abba-mise-en-action, ce qui déclenche le déploiement.
+#
+# ⚠️ Tout NOUVEAU fichier statique de l'application doit être ajouté à la liste « cp » ci-dessous,
+# sinon il n'arrive jamais sur le site.
+# Les règles Firestore ne sont PAS copiées ici : leur source unique est ABBA-Parcours/firestore.rules.
+# ÉTAT : déclenchement automatique EN ATTENTE. Tant que le secret GESTION_DEPLOY_KEY n'existe pas dans ce dépôt,
+# le workflow ne se lance qu'à la main. Une fois la clé en place, remplacer le bloc « on » par :
+#   on:
+#     push:
+#       branches: [main]
+#       paths-ignore: [".github/**", "*.md"]
+#     workflow_dispatch:
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: publier-domaine
+  cancel-in-progress: false
+
+jobs:
+  publier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: src
+
+      - name: Vérifier que la clé de déploiement existe
+        id: cle
+        env:
+          KEY: ${{ secrets.GESTION_DEPLOY_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::error title=Publication impossible::Le secret GESTION_DEPLOY_KEY est absent de ce dépôt. Rien n'a été publié."
+            exit 1
+          fi
+
+      - name: Préparer l'accès à abba-gestion (clé de déploiement)
+        env:
+          KEY: ${{ secrets.GESTION_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Copier les fichiers dans abba-gestion
+        run: |
+          git clone --depth 1 --filter=blob:none --sparse git@github.com:batisseursbibliques/abba-gestion.git gest
+          cd gest
+          git sparse-checkout set public/abba-mise-en-action
+          D=public/abba-mise-en-action
+          rm -rf "$D" && mkdir -p "$D"
+          cd ../src
+          cp -r index.html app.js sync.js style.css sw.js manifest.json firebase-config.js logo.png icon-192.png icon-512.png ../gest/$D/
+          cd ../gest
+          git config user.name "Publication automatique"
+          git config user.email "noreply@batisseursbibliques.org"
+          git add -A "$D"
+          if git diff --cached --quiet; then echo "Rien à publier."; exit 0; fi
+          git commit -m "abba-mise-en-action : publication automatique ($(cd ../src && git rev-parse --short HEAD))"
+          for i in 1 2 3; do
+            git push origin HEAD:main && break
+            git pull --rebase origin main
+          done
