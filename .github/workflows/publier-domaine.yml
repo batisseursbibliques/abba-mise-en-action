@@ -7,14 +7,12 @@ name: Publier sur batisseursbibliques.org
 # ⚠️ Tout NOUVEAU fichier statique de l'application doit être ajouté à la liste « cp » ci-dessous,
 # sinon il n'arrive jamais sur le site.
 # Les règles Firestore ne sont PAS copiées ici : leur source unique est ABBA-Parcours/firestore.rules.
-# ÉTAT : déclenchement automatique EN ATTENTE. Tant que le secret GESTION_DEPLOY_KEY n'existe pas dans ce dépôt,
-# le workflow ne se lance qu'à la main. Une fois la clé en place, remplacer le bloc « on » par :
-#   on:
-#     push:
-#       branches: [main]
-#       paths-ignore: [".github/**", "*.md"]
-#     workflow_dispatch:
 on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - ".github/**"
+      - "*.md"
   workflow_dispatch:
 
 concurrency:
