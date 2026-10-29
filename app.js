@@ -242,6 +242,7 @@ async function onAuthChanged(user) {
     updatePdpProgress();
     updateAccueilPdpHint();
     afficherReprise();
+    afficherReperesS3();
   });
 
   // Rencontres
@@ -320,13 +321,14 @@ function buildS3Dimensions() {
       <div class="dim-eval-card" id="s3-card-${dim.key}">
         <div class="dim-eval-head">
           <span class="dim-eval-title">${dim.icone} ${dim.label}</span>
-          <span class="dim-eval-score" id="s3-score-display-${dim.key}">3/5</span>
+          <span class="dim-eval-score" id="s3-score-display-${dim.key}">—</span>
         </div>
         <div class="dim-score-row">
           <input type="range" min="1" max="5" value="3" id="s3-range-${dim.key}"
             oninput="updateDimScore('${dim.key}')">
-          <span class="dim-level-badge" id="s3-badge-${dim.key}">En développement</span>
+          <span class="dim-level-badge" id="s3-badge-${dim.key}">À évaluer</span>
         </div>
+        <p class="settings-hint" id="s3-ref-${dim.key}" style="margin:0 0 8px;"></p>
         <label class="field">
           <span>Description de ma situation actuelle</span>
           <textarea class="text-input" rows="2" id="s3-desc-${dim.key}"
@@ -348,6 +350,8 @@ function buildS3Dimensions() {
 }
 
 function updateDimScore(key) {
+  // La dimension compte comme évaluée seulement quand la personne a bougé le curseur (ou qu'une note était déjà enregistrée)
+  document.getElementById("s3-range-" + key).dataset.touched = "1";
   const val = parseInt(document.getElementById("s3-range-" + key).value);
   document.getElementById("s3-score-display-" + key).textContent = val + "/5";
   const badge = document.getElementById("s3-badge-" + key);
@@ -675,12 +679,14 @@ async function savePdp() {
 
   // S3 — dimensions
   DIMENSIONS.forEach(dim => {
+    const rangeEl = document.getElementById("s3-range-" + dim.key);
     data.s3[dim.key] = {
-      note:  parseInt(document.getElementById("s3-range-" + dim.key)?.value) || 3,
       desc:  getVal("s3-desc-" + dim.key),
       forts: getVal("s3-forts-" + dim.key),
       defis: getVal("s3-defis-" + dim.key),
     };
+    // Pas de note enregistrée tant que la personne ne s'est pas évaluée elle-même
+    if (rangeEl && rangeEl.dataset.touched === "1") data.s3[dim.key].note = parseInt(rangeEl.value) || 3;
   });
 
   // S7 — SMART
@@ -712,6 +718,15 @@ async function savePdp() {
 // L'étudiant vérifie puis confirme ; rien n'est écrit dans son PDP avant sa confirmation.
 // ─────────────────────────────────────────────────────────────
 let REPRISE = null;
+
+// Rappelle, à côté de chaque dimension de S3, la note du début du Parcours (repère seulement : S3 est une nouvelle évaluation)
+function afficherReperesS3() {
+  const notes = MY_PDP?.pont?.notesParcours || REPRISE?.notes || null;
+  DIMENSIONS.forEach((dim, i) => {
+    const el = document.getElementById("s3-ref-" + dim.key);
+    if (el) el.textContent = notes && notes[i] ? `Au début du Parcours : ${notes[i]}/5` : "";
+  });
+}
 let REPRISE_EN_COURS = false;
 
 function nomPays(code) {
@@ -726,15 +741,17 @@ async function afficherReprise() {
   try { r = await window.AbbaSync.getReprise(CURRENT_USER.uid); } catch (e) { r = null; }
   if (!r || !(r.nom || r.paysCode || r.mbti || r.notes || r.niveaux)) { box.innerHTML = ""; return; }
   REPRISE = r;
+  afficherReperesS3();
   const lignes = [];
   if (r.nom)      lignes.push(`<li><strong>Nom :</strong> ${escapeAttr(r.nom)}</li>`);
   if (r.paysCode) lignes.push(`<li><strong>Pays :</strong> ${escapeAttr(nomPays(r.paysCode))}</li>`);
   if (r.mbti)     lignes.push(`<li><strong>Profil MBTI :</strong> ${escapeAttr(r.mbti)}</li>`);
   if (r.notes) {
-    lignes.push(`<li><strong>Auto-évaluation de départ (sur 5) :</strong> ` +
-      DIMENSIONS.map((d, i) => `${d.icone} ${d.label} ${r.notes[i] || "—"}`).join(" · ") + `</li>`);
+    lignes.push(`<li><strong>Ton auto-évaluation au début du Parcours (sur 5) :</strong> ` +
+      DIMENSIONS.map((d, i) => `${d.icone} ${d.label} ${r.notes[i] || "—"}`).join(" · ") +
+      `<br><small>Elle te sert de repère. À l’étape S3, tu te réévalues tel que tu es aujourd’hui : c’est cette nouvelle évaluation qui sera ton point de départ.</small></li>`);
   } else {
-    lignes.push(`<li><strong>Auto-évaluation de départ :</strong> pas encore faite dans le Parcours (tu la feras ici à l’étape S3).</li>`);
+    lignes.push(`<li><strong>Auto-évaluation :</strong> pas faite dans le Parcours. Tu te noteras à l’étape S3.</li>`);
   }
   if (r.niveaux) {
     lignes.push(`<li><strong>Modules :</strong> ${r.nbValides} validé(s) dans le Parcours. Niveau de départ proposé : 3 pour un module validé, 1 sinon (tu pourras l’ajuster à l’étape S4).</li>`);
@@ -762,13 +779,6 @@ async function confirmerReprise() {
   videSinon("s1Nom", r.nom);
   videSinon("s1Pays", r.paysCode ? nomPays(r.paysCode) : "");
   videSinon("s2Mbti", r.mbti);
-  if (r.notes && !(MY_PDP?.s3 && Object.keys(MY_PDP.s3).length)) {
-    DIMENSIONS.forEach((dim, i) => {
-      const v = r.notes[i];
-      const range = document.getElementById("s3-range-" + dim.key);
-      if (range && v) { range.value = v; updateDimScore(dim.key); }
-    });
-  }
   if (r.niveaux) {
     r.niveaux.forEach((val, i) => {
       const el = document.getElementById("s4-mod-" + i);
@@ -779,7 +789,7 @@ async function confirmerReprise() {
     await savePdp();   // enregistre tout le formulaire (et met à jour le résumé du mentor)
     await window.AbbaSync.saveMyPDP(CURRENT_USER.uid, {
       s1: { paysCode: r.paysCode || "" },
-      pont: { confirmeLe: new Date().toISOString(), source: "parcours" },
+      pont: { confirmeLe: new Date().toISOString(), source: "parcours", notesParcours: r.notes || null },
     });
     if (msg) msg.textContent = "";
   } catch (e) {
@@ -1020,10 +1030,18 @@ function updateBilan() {
   if (!hasBilan) return;
 
   const r1 = MY_RENCONTRES["mois1"] || {};
-  const notesDebut = MY_PDP?.s3 ?
-    DIMENSIONS.reduce((acc, d) => { acc[d.key] = n5(MY_PDP.s3[d.key]?.note); return acc; }, {}) :
-    Object.fromEntries(Object.entries(r1.notes8dim || {}).map(([k, v]) => [k, n5(v)]));
+  // Départ de la Mise en Action : les notes de S3 ; à défaut (S3 pas évalué), celles de la rencontre du mois 1
+  const notesS3 = Object.fromEntries(DIMENSIONS.map(d => [d.key, n5(MY_PDP?.s3?.[d.key]?.note)]));
+  const notesDebut = Object.values(notesS3).some(v => v > 0)
+    ? notesS3
+    : Object.fromEntries(Object.entries(r1.notes8dim || {}).map(([k, v]) => [k, n5(v)]));
   const notesFin = Object.fromEntries(Object.entries(r6.notes8dim || {}).map(([k, v]) => [k, n5(v)]));
+  // Note du début du Parcours (repère), si elle a été reprise
+  const nParc = MY_PDP?.pont?.notesParcours;
+  const notesParcours = Array.isArray(nParc) && nParc.length === DIMENSIONS.length
+    ? Object.fromEntries(DIMENSIONS.map((d, i) => [d.key, n5(nParc[i])])) : {};
+  const pMoy = DIMENSIONS.every(d => notesParcours[d.key])
+    ? (DIMENSIONS.reduce((a, d) => a + notesParcours[d.key], 0) / DIMENSIONS.length).toFixed(1) + "/5" : "—";
 
   // Tableau comparatif
   const rows = DIMENSIONS.map(dim => {
@@ -1034,8 +1052,9 @@ function updateBilan() {
     const sign  = diff > 0 ? "+" : "";
     return `<tr>
       <td>${dim.icone} ${dim.label}</td>
-      <td>${debut}/5</td>
-      <td>${fin}/5</td>
+      <td>${notesParcours[dim.key] ? notesParcours[dim.key] + "/5" : "—"}</td>
+      <td>${debut ? debut + "/5" : "—"}</td>
+      <td>${fin ? fin + "/5" : "—"}</td>
       <td class="${cls}">${sign}${diff}</td>
     </tr>`;
   });
@@ -1052,11 +1071,12 @@ function updateBilan() {
     <div class="card">
       <p class="eyebrow">Progression des 8 dimensions</p>
       <table class="bilan-table">
-        <thead><tr><th>Dimension</th><th>Début</th><th>Fin</th><th>Évolution</th></tr></thead>
+        <thead><tr><th>Dimension</th><th>Début du Parcours</th><th>Début de la Mise en Action</th><th>Fin</th><th>Évolution (Mise en Action)</th></tr></thead>
         <tbody>
           ${rows.join("")}
           <tr style="font-weight:700;border-top:1px solid var(--ink);">
             <td>Moyenne</td>
+            <td>${pMoy}</td>
             <td>${dMoy}/5</td>
             <td>${fMoy}/5</td>
             <td class="${cls}">${diffMoy > 0 ? "+" : ""}${diffMoy}</td>
