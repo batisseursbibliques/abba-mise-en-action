@@ -334,7 +334,71 @@ async function getReprise(uid) {
   });
 }
 
+// ============================================================
+// ENTRÉE AVEC LE NUMÉRO D'UN CERTIFICAT (formation suivie hors de l'application)
+// /mea_numeros/{numero} = { uid, email, pays, statut: "valide" | "attente", at }
+// Un numéro ne sert qu'une fois (règle de sécurité du serveur). « valide » si le nom du certificat
+// est le même que celui du compte, sinon « attente » : le coordinateur national du pays (ou le PPV) valide.
+// ============================================================
+// Met un numéro saisi à la main au bon format (ex. « abbap1234abcd » → « ABBA-P-1234-ABCD »)
+function normaliserNumero(brut) {
+  const c = String(brut || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const m = /^ABBAP([A-Z0-9]{4})([A-Z0-9]{4})$/.exec(c);
+  return m ? `ABBA-P-${m[1]}-${m[2]}` : "";
+}
+// Vérifie que le numéro correspond à un certificat de fin de formation réellement délivré (fiche publique de vérification)
+async function verifierNumeroCertificat(brut) {
+  const n = normaliserNumero(brut);
+  if (!n) return { erreur: "format" };
+  let snap;
+  try { snap = await getDoc(doc(db, "attestations", n)); } catch (e) { return { erreur: "reseau" }; }
+  if (!snap.exists() || snap.data().type !== "parcours") return { erreur: "inconnu" };
+  return { numero: n, nom: snap.data().nom || "", date: snap.data().date || "" };
+}
+// La demande d'entrée de cette personne (valide d'abord, sinon la première), ou null
+async function getMonAcces(uid) {
+  const r = await getDocs(query(collection(db, "mea_numeros"), where("uid", "==", uid)));
+  if (r.empty) return null;
+  const liste = r.docs.map(d => ({ numero: d.id, ...d.data() }));
+  return liste.find(d => d.statut === "valide") || liste[0];
+}
+// Pays du compte (code à 2 lettres) s'il est renseigné dans le profil Parcours
+async function getMonPays(uid) {
+  try {
+    const c = (await getDoc(doc(db, "users", uid, "priv", "contact"))).data() || {};
+    const p = String(c.pays || "").toUpperCase();
+    return /^[A-Z]{2}$/.test(p) ? p : "";
+  } catch (e) { return ""; }
+}
+// Utilise le numéro pour ce compte. Rend « valide » ou « attente ». Échoue (permission-denied) si le numéro est déjà utilisé.
+async function reclamerNumero(user, cert, pays) {
+  let profil = {};
+  try { profil = await getUserProfile(user.uid) || {}; } catch (e) { profil = {}; }
+  let statut = (profil.nom && String(cert.nom).toLowerCase() === String(profil.nom).toLowerCase()) ? "valide" : "attente";
+  const ref = doc(db, "mea_numeros", cert.numero);
+  const base = { uid: user.uid, email: String(user.email).toLowerCase(), pays, at: serverTimestamp() };
+  try { await setDoc(ref, { ...base, statut }); }
+  catch (e) {
+    if (statut !== "valide") throw e;
+    statut = "attente";                       // le serveur n'a pas reconnu l'identité des noms : on demande une validation
+    await setDoc(ref, { ...base, statut });
+  }
+  return statut;
+}
+// Côté coordinateurs
+async function listDemandesAcces() {
+  const r = await getDocs(query(collection(db, "mea_numeros"), where("statut", "==", "attente")));
+  return r.docs.map(d => ({ numero: d.id, ...d.data() }));
+}
+async function validerDemandeAcces(numero) { await setDoc(doc(db, "mea_numeros", numero), { statut: "valide" }, { merge: true }); }
+async function refuserDemandeAcces(numero) { await deleteDoc(doc(db, "mea_numeros", numero)); }
+async function getMonRoleAdmin(email) {
+  try { const sn = await getDoc(doc(db, "admins", String(email).toLowerCase())); return sn.exists() ? sn.data() : null; } catch (e) { return null; }
+}
+
 window.AbbaSync = {
+  normaliserNumero, verifierNumeroCertificat, getMonAcces, getMonPays, reclamerNumero,
+  listDemandesAcces, validerDemandeAcces, refuserDemandeAcces, getMonRoleAdmin,
   getCertificatParcours, estExempte, getReprise, calculerReprise,
   getComptePaiement,
   isAdminEmail,

@@ -508,6 +508,13 @@ if ('serviceWorker' in navigator) {
         <h1>Administration</h1>
       </div>
 
+      <!-- Demandes d'entrée avec un numéro de certificat -->
+      <div class="card" id="demandesAccesCard" hidden>
+        <p class="eyebrow">Demandes d’entrée par numéro de certificat</p>
+        <p class="settings-hint">Des personnes qui ont suivi le Parcours hors de l’application entrent avec le numéro de leur certificat. Quand le nom du certificat ne correspond pas à celui du compte, la demande attend ici ta validation (coordinateur national du pays, ou PPV).</p>
+        <div id="demandesAccesList"></div>
+      </div>
+
       <!-- Gestion des mentors -->
       <div class="card">
         <p class="eyebrow">Mentors actifs</p>

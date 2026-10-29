@@ -74,6 +74,138 @@ let unsubMentors   = null;   // liste complète des mentors (coordinateurs seule
 let unsubMyRole    = null;   // ma propre fiche de mentor (tout le monde)
 let ADMIN_OUVERT   = false;  // vrai une fois l'écran Admin chargé
 
+// ─────────────────────────────────────────────────────────────
+// ENTRÉE AVEC LE NUMÉRO D'UN CERTIFICAT (Parcours suivi hors de l'application)
+// ─────────────────────────────────────────────────────────────
+const CODES_PAYS = ["AF", "AX", "AL", "DZ", "AS", "AD", "AO", "AI", "AQ", "AG", "AR", "AM", "AW", "AU", "AT", "AZ", "BS", "BH", "BD", "BB", "BY", "BE", "BZ", "BJ", "BM", "BT", "BO", "BQ", "BA", "BW", "BV", "BR", "IO", "BN", "BG", "BF", "BI", "CV", "KH", "CM", "CA", "KY", "CF", "TD", "CL", "CN", "CX", "CC", "CO", "KM", "CG", "CD", "CK", "CR", "CI", "HR", "CU", "CW", "CY", "CZ", "DK", "DJ", "DM", "DO", "EC", "EG", "SV", "GQ", "ER", "EE", "SZ", "ET", "FK", "FO", "FJ", "FI", "FR", "GF", "PF", "TF", "GA", "GM", "GE", "DE", "GH", "GI", "GR", "GL", "GD", "GP", "GU", "GT", "GG", "GN", "GW", "GY", "HT", "HM", "VA", "HN", "HK", "HU", "IS", "IN", "ID", "IR", "IQ", "IE", "IM", "IL", "IT", "JM", "JP", "JE", "JO", "KZ", "KE", "KI", "KP", "KR", "KW", "KG", "LA", "LV", "LB", "LS", "LR", "LY", "LI", "LT", "LU", "MO", "MG", "MW", "MY", "MV", "ML", "MT", "MH", "MQ", "MR", "MU", "YT", "MX", "FM", "MD", "MC", "MN", "ME", "MS", "MA", "MZ", "MM", "NA", "NR", "NP", "NL", "NC", "NZ", "NI", "NE", "NG", "NU", "NF", "MK", "MP", "NO", "OM", "PK", "PW", "PS", "PA", "PG", "PY", "PE", "PH", "PN", "PL", "PT", "PR", "QA", "RE", "RO", "RU", "RW", "BL", "SH", "KN", "LC", "MF", "PM", "VC", "WS", "SM", "ST", "SA", "SN", "RS", "SC", "SL", "SG", "SX", "SK", "SI", "SB", "SO", "ZA", "GS", "SS", "ES", "LK", "SD", "SR", "SJ", "SE", "CH", "SY", "TW", "TJ", "TZ", "TH", "TL", "TG", "TK", "TO", "TT", "TN", "TR", "TM", "TC", "TV", "UG", "UA", "AE", "GB", "US", "UM", "UY", "UZ", "VU", "VE", "VN", "VG", "VI", "WF", "EH", "YE", "ZM", "ZW"];
+
+function afficherReclamation(user) {
+  afficherVerrou(`<h2>🔒 Mise en Action</h2>
+    <p>La Mise en Action s’ouvre quand ton <strong>certificat de fin de formation</strong> du Parcours Bâtisseur est délivré.</p>
+    <p>Termine tes modules dans le Parcours : ton coordinateur te délivrera ensuite ton certificat.</p>
+    <hr style="margin:16px 0;opacity:.3;">
+    <p><strong>Tu as déjà ton certificat</strong> (formation suivie hors de l’application) ? Saisis son numéro ou scanne son QR code.</p>
+    <input id="certNumInput" class="text-input" placeholder="ABBA-P-XXXX-XXXX" autocomplete="off" autocapitalize="characters" style="text-align:center;">
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button id="certVerifBtn" class="btn-primary" type="button" style="flex:1;">Vérifier</button>
+      <button id="certScanBtn" class="btn-secondary" type="button">📷 Scanner</button>
+    </div>
+    <div id="certResultat" style="margin-top:12px;text-align:left;"></div>
+    <p style="margin-top:16px;"><a href="../ABBA-Parcours/">← Retour au Parcours Bâtisseur</a></p>`);
+  const input = document.getElementById("certNumInput");
+  const verifier = () => verifierNumeroSaisi(user);
+  document.getElementById("certVerifBtn").addEventListener("click", verifier);
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") verifier(); });
+  document.getElementById("certScanBtn").addEventListener("click", () => {
+    scannerQR((numero) => { input.value = numero; verifier(); }, document.getElementById("certResultat"));
+  });
+}
+
+async function verifierNumeroSaisi(user) {
+  const res = document.getElementById("certResultat");
+  res.textContent = "Vérification…";
+  const r = await window.AbbaSync.verifierNumeroCertificat(document.getElementById("certNumInput").value);
+  if (r.erreur === "format") { res.innerHTML = "<p>Ce numéro n’a pas le bon format. Il ressemble à <strong>ABBA-P-XXXX-XXXX</strong>.</p>"; return; }
+  if (r.erreur === "reseau") { res.innerHTML = "<p>Impossible de vérifier pour le moment. Vérifie ta connexion et réessaie.</p>"; return; }
+  if (r.erreur === "inconnu") { res.innerHTML = "<p>Aucun certificat de fin de formation ne correspond à ce numéro. Vérifie-le sur ton certificat.</p>"; return; }
+  const paysCompte = await window.AbbaSync.getMonPays(user.uid);
+  const choixPays = paysCompte ? "" : `
+    <label style="display:block;margin-top:8px;">Ton pays
+      <select id="certPaysSel" class="text-input"><option value="">— Choisir —</option>${
+        CODES_PAYS.map(c => ({ c, n: nomPays(c) })).sort((a, b) => a.n.localeCompare(b.n, "fr"))
+          .map(x => `<option value="${x.c}">${escapeAttr(x.n)}</option>`).join("")}</select>
+    </label>`;
+  res.innerHTML = `
+    <p>Certificat au nom de <strong>${escapeAttr(r.nom)}</strong>.</p>
+    ${choixPays}
+    <label style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+      <input type="checkbox" id="certMoi"> <span>C’est bien mon certificat</span>
+    </label>
+    <button id="certConfirmBtn" class="btn-primary" type="button" style="margin-top:10px;width:100%;" disabled>Entrer dans la Mise en Action</button>
+    <p id="certMsg" class="settings-hint" style="margin-top:8px;"></p>`;
+  const cb = document.getElementById("certMoi"), btn = document.getElementById("certConfirmBtn"), msg = document.getElementById("certMsg");
+  const maj = () => { btn.disabled = !cb.checked || (!paysCompte && !document.getElementById("certPaysSel").value); };
+  cb.addEventListener("change", maj);
+  document.getElementById("certPaysSel")?.addEventListener("change", maj);
+  btn.addEventListener("click", async () => {
+    btn.disabled = true; msg.textContent = "Enregistrement…";
+    try {
+      const pays = paysCompte || document.getElementById("certPaysSel").value;
+      await window.AbbaSync.reclamerNumero(user, r, pays);
+      location.reload();
+    } catch (e) {
+      console.error(e);
+      msg.textContent = (e && e.code === "permission-denied")
+        ? "Ce numéro ne peut pas être utilisé avec ce compte (il a peut-être déjà servi). Contacte ton coordinateur."
+        : "Impossible d’enregistrer pour le moment. Vérifie ta connexion et réessaie.";
+      btn.disabled = false;
+    }
+  });
+}
+
+// Scan du QR code du certificat avec la caméra (si le téléphone le permet) ; sinon on invite à saisir le numéro
+async function scannerQR(auNumero, zoneMsg) {
+  const saisir = (t) => { zoneMsg.innerHTML = `<p>${t} Saisis plutôt le numéro écrit sur le certificat.</p>`; };
+  if (!("BarcodeDetector" in window) || !navigator.mediaDevices?.getUserMedia) { saisir("Le scan n’est pas disponible sur cet appareil."); return; }
+  let flux;
+  try { flux = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }); }
+  catch (e) { saisir("Impossible d’ouvrir la caméra."); return; }
+  const voile = document.createElement("div");
+  voile.style.cssText = "position:fixed;inset:0;background:#000;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;";
+  voile.innerHTML = `<video playsinline muted autoplay style="width:100%;max-height:70vh;object-fit:cover;"></video>
+    <p style="color:#fff;margin:0;">Place le QR code du certificat dans le cadre</p>
+    <button class="btn-secondary" type="button">Fermer</button>`;
+  document.body.appendChild(voile);
+  const video = voile.querySelector("video");
+  video.srcObject = flux;
+  let actif = true;
+  const fermer = () => { actif = false; flux.getTracks().forEach(t => t.stop()); voile.remove(); };
+  voile.querySelector("button").addEventListener("click", fermer);
+  const detecteur = new BarcodeDetector({ formats: ["qr_code"] });
+  while (actif) {
+    try {
+      for (const c of await detecteur.detect(video)) {
+        const m = /ABBA-P-[A-Z0-9]{4}-[A-Z0-9]{4}/i.exec(c.rawValue || "");
+        if (m) { fermer(); auNumero(m[0].toUpperCase()); return; }
+      }
+    } catch (e) { /* image pas prête : on réessaie */ }
+    await new Promise(r => setTimeout(r, 300));
+  }
+}
+
+// Côté coordinateurs : demandes d'entrée en attente (nom du certificat différent du nom du compte)
+async function chargerDemandesAcces() {
+  const carte = document.getElementById("demandesAccesCard");
+  const zone = document.getElementById("demandesAccesList");
+  if (!carte || !zone || !CURRENT_USER) return;
+  let liste = [];
+  try { liste = await window.AbbaSync.listDemandesAcces(); } catch (e) { carte.hidden = true; return; }
+  const estPPV = window.AbbaSync.isAdminEmail(CURRENT_USER.email);
+  const role = estPPV ? null : await window.AbbaSync.getMonRoleAdmin(CURRENT_USER.email);
+  // Je ne vois que les demandes sur lesquelles je peux agir : toutes pour le PPV, celles de mon pays pour un coordinateur national
+  const visibles = liste.filter(d => estPPV || (role && role.fonction === "national" && role.pays === d.pays));
+  carte.hidden = false;
+  if (!visibles.length) { zone.innerHTML = "<p class='settings-hint'>Aucune demande en attente.</p>"; return; }
+  const certs = await Promise.all(visibles.map(d => window.AbbaSync.verifierNumeroCertificat(d.numero)));
+  zone.innerHTML = visibles.map((d, i) => `
+    <div class="mentor-chip" style="display:block;margin-bottom:8px;">
+      <div><strong>${escapeAttr(certs[i].nom || "—")}</strong> · ${escapeAttr(nomPays(d.pays))}</div>
+      <div class="settings-hint">Compte : ${escapeAttr(d.email)} · N° ${escapeAttr(d.numero)}</div>
+      <div style="display:flex;gap:8px;margin-top:6px;">
+        <button class="btn-primary" type="button" data-acces="valider" data-numero="${escapeAttr(d.numero)}">Valider</button>
+        <button class="btn-secondary" type="button" data-acces="refuser" data-numero="${escapeAttr(d.numero)}">Refuser</button>
+      </div>
+    </div>`).join("");
+  zone.querySelectorAll("button[data-acces]").forEach(b => b.addEventListener("click", async () => {
+    const numero = b.dataset.numero, valider = b.dataset.acces === "valider";
+    if (!valider && !confirm("Refuser cette demande ? Le numéro sera libéré et pourra être utilisé par la bonne personne.")) return;
+    b.disabled = true;
+    try { valider ? await window.AbbaSync.validerDemandeAcces(numero) : await window.AbbaSync.refuserDemandeAcces(numero); }
+    catch (e) { alert("Action impossible : " + (e.code || e.message)); }
+    chargerDemandesAcces();
+  }));
+}
+
 // Écran de verrouillage (accès pas encore ouvert)
 function afficherVerrou(html) {
   document.getElementById("app").style.display = "none";
@@ -178,11 +310,19 @@ async function onAuthChanged(user) {
     try {
       const cert = await window.AbbaSync.getCertificatParcours(user.uid);
       if (!cert) {
-        afficherVerrou(`<h2>🔒 Mise en Action</h2>
-          <p>La Mise en Action s’ouvre quand ton <strong>certificat de fin de formation</strong> du Parcours Bâtisseur est délivré.</p>
-          <p>Termine tes modules dans le Parcours : ton coordinateur te délivrera ensuite ton certificat, et tu pourras entrer ici.</p>
-          <p><a href="../ABBA-Parcours/">← Retour au Parcours Bâtisseur</a></p>`);
-        return;
+        // Pas de certificat dans le compte : la personne a peut-être suivi le Parcours hors de l'application
+        // et est entrée avec le numéro de son certificat (« valide » ou « attente »).
+        let acces = null;
+        try { acces = await window.AbbaSync.getMonAcces(user.uid); } catch (e) { acces = null; }
+        if (!acces) { afficherReclamation(user); return; }
+        if (acces.statut !== "valide") {
+          afficherVerrou(`<h2>⏳ Mise en Action</h2>
+            <p>Ta demande d’entrée avec le certificat <strong>N° ${escapeAttr(acces.numero)}</strong> est <strong>en attente de validation</strong>.</p>
+            <p>Le nom écrit sur le certificat n’est pas exactement celui de ton compte. Le coordinateur national de ton pays (${escapeAttr(nomPays(acces.pays))}) doit vérifier ta demande. Reviens un peu plus tard.</p>
+            <p><button class="btn-primary" type="button" onclick="location.reload()">Actualiser</button></p>
+            <p><a href="../ABBA-Parcours/">← Retour au Parcours Bâtisseur</a></p>`);
+          return;
+        }
       }
     } catch (e) { /* lecture impossible : pas de blocage */ }
     try {
@@ -1346,6 +1486,7 @@ async function loadAdmin() {
   ALL_USERS = await window.AbbaSync.loadAllUsers();
   ALL_ASSIGNMENTS = await window.AbbaSync.loadAllAssignments();
   ADMIN_OUVERT = true;
+  chargerDemandesAcces();
   renderMentorsList();
   renderMentorSelect();
   renderAssignSelects();
