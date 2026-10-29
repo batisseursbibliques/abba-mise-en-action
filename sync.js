@@ -275,7 +275,67 @@ async function getComptePaiement(uid) {
   const snap = await getDoc(doc(db, "formation", uid, "compte", "paiement"));
   return snap.exists() ? snap.data() : null;
 }
+// Certificat de fin de formation du Parcours (copie privée de l'étudiant) : null tant qu'il n'est pas délivré
+async function getCertificatParcours(uid) {
+  const snap = await getDoc(doc(db, "formation", uid, "attestations", "parcours"));
+  return snap.exists() ? snap.data() : null;
+}
+
+// Coordinateurs et mentors entrent toujours dans la Mise en Action
+async function estExempte(user) {
+  if (isAdminEmail(user.email)) return true;
+  const email = String(user.email || "").trim().toLowerCase();
+  try { if ((await getDoc(doc(db, "mea_mentors", email))).exists()) return true; } catch (e) { /* ignoré */ }
+  try { if ((await getDoc(doc(db, "admins", email))).exists()) return true; } catch (e) { /* non coordinateur : lecture refusée */ }
+  return false;
+}
+
+// Modules du Parcours, dans l'ordre des 14 modules de la Mise en Action (le 14 regroupe 14.1 et 14.2)
+const PARCOURS_MODULES = [["m1"],["m2"],["m3"],["m4"],["m5"],["m6"],["m7"],["m8"],["m9"],["m10"],["m11"],["m12"],["m13"],["m14","m14b"]];
+
+// Calcule ce qu'on peut reprendre à partir des données brutes du Parcours (fonction pure, testable)
+function calculerReprise(brut) {
+  const out = { nom: brut.nom || "", paysCode: brut.paysCode || "", mbti: brut.mbti || "", notes: null, niveaux: null, nbValides: 0 };
+  const fiche = brut.autoeval && brut.autoeval.done ? (brut.autoeval.ficheData || {}) : null;
+  if (fiche) {
+    const notes = [1,2,3,4,5,6,7,8].map(n => Math.min(5, Math.max(0, Number(fiche["d" + n]) || 0)));
+    if (notes.every(n => n > 0)) out.notes = notes;
+  }
+  const acquis = brut.acquis || [];
+  const modules = brut.modules || {};
+  const fini = (id) => acquis.includes(id) || (modules[id] && modules[id].ficheStatus === "validated" && modules[id].qcm && modules[id].qcm.ok);
+  out.niveaux = PARCOURS_MODULES.map(ids => ids.every(fini) ? 3 : 1);
+  out.nbValides = out.niveaux.filter(n => n === 3).length;
+  if (!out.nbValides && !acquis.length && !Object.keys(modules).length) out.niveaux = null;
+  return out;
+}
+
+// Lit les données du Parcours de l'étudiant (toutes lisibles par lui seul) ; une lecture qui échoue n'empêche pas les autres
+async function getReprise(uid) {
+  const lire = async (fn, vide) => { try { return await fn(); } catch (e) { return vide; } };
+  const [profil, contact, profilForm, formation, modSnap] = await Promise.all([
+    lire(async () => (await getDoc(doc(db, "users", uid))).data() || {}, {}),
+    lire(async () => (await getDoc(doc(db, "users", uid, "priv", "contact"))).data() || {}, {}),
+    lire(async () => (await getDoc(doc(db, "users", uid, "priv", "profilFormation"))).data() || {}, {}),
+    lire(async () => (await getDoc(doc(db, "formation", uid))).data() || {}, {}),
+    lire(async () => await getDocs(collection(db, "formation", uid, "modules")), null),
+  ]);
+  const modules = {};
+  if (modSnap) modSnap.docs.forEach(d => { modules[d.id] = d.data(); });
+  const pays = String(contact.pays || "").toUpperCase();
+  return calculerReprise({
+    // Dans le compte Parcours, « nom » contient déjà le prénom et le nom
+    nom: String(profil.nom || [profil.prenomSaisi, profil.nomFamille].filter(Boolean).join(" ")).trim(),
+    paysCode: /^[A-Z]{2}$/.test(pays) ? pays : "",
+    mbti: profilForm.mbti || "",
+    autoeval: modules.autoeval || null,
+    acquis: formation.acquis || [],
+    modules,
+  });
+}
+
 window.AbbaSync = {
+  getCertificatParcours, estExempte, getReprise, calculerReprise,
   getComptePaiement,
   isAdminEmail,
   logIn, logOut, watchAuth, getUserProfile,

@@ -33,6 +33,12 @@ const MODULES_14 = [
   "Entrepreneuriat / Leadership / Gestion de projet",
 ];
 
+// Échelle des 8 dimensions : 1 à 5 (comme l'auto-évaluation de Parcours).
+// Les anciennes notes sur 10 (données de test) sont ramenées sur 5 à l'affichage.
+// Échappe le texte venant d'ailleurs (noms, etc.) avant de l'afficher dans la page
+const escapeAttr = (t) => String(t == null ? "" : t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+const n5 = (v) => { v = Number(v) || 0; return v > 5 ? Math.round(v / 2) : v; };
+
 const LEADERSHIP_COMPETENCES = [
   "Vision et direction",
   "Communication efficace",
@@ -67,6 +73,16 @@ let unsubRencontres = null;
 let unsubMentors   = null;   // liste complète des mentors (coordinateurs seulement)
 let unsubMyRole    = null;   // ma propre fiche de mentor (tout le monde)
 let ADMIN_OUVERT   = false;  // vrai une fois l'écran Admin chargé
+
+// Écran de verrouillage (accès pas encore ouvert)
+function afficherVerrou(html) {
+  document.getElementById("app").style.display = "none";
+  const box = document.createElement("div");
+  box.id = "paiementLock";
+  box.style.cssText = "max-width:520px;margin:12vh auto;padding:24px;text-align:center;";
+  box.innerHTML = html;
+  document.body.appendChild(box);
+}
 
 // ── Init ───────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
@@ -152,23 +168,35 @@ async function onAuthChanged(user) {
   const verrou = document.getElementById("paiementLock");
   if (verrou) verrou.remove();
 
-  // Paiement : la Mise en Action s'ouvre une fois les 5 000 F du Parcours payés (sans compte de paiement : pas de blocage)
-  try {
-    const cp = await window.AbbaSync.getComptePaiement(user.uid);
-    if (cp && cp.actif !== false && Number(cp.paye || 0) < Number(cp.total ?? 5000)) {
-      document.getElementById("app").style.display = "none";
-      const box = document.createElement("div");
-      box.id = "paiementLock";
-      box.style.cssText = "max-width:520px;margin:12vh auto;padding:24px;text-align:center;";
-      box.innerHTML = `<h2>🔒 Mise en Action</h2>
-        <p>La Mise en Action s’ouvre une fois les ${Number(cp.total ?? 5000).toLocaleString("fr-FR")} F du Parcours payés.</p>
-        <p><strong>Versé : ${Number(cp.paye || 0).toLocaleString("fr-FR")} F sur ${Number(cp.total ?? 5000).toLocaleString("fr-FR")} F.</strong></p>
-        <p>Termine ton paiement dans le Parcours Bâtisseur (carte « Mon paiement » de l’accueil), puis reviens ici.</p>
-        <p><a href="../ABBA-Parcours/">← Retour au Parcours Bâtisseur</a></p>`;
-      document.body.appendChild(box);
-      return;
-    }
-  } catch (e) { /* en cas d'erreur de lecture, on n'empêche pas l'accès */ }
+  // ACCÈS. Les coordinateurs et les mentors entrent toujours.
+  // Un bâtisseur entre quand (1) son certificat de fin de formation du Parcours est délivré
+  // et (2) son paiement du Parcours est soldé (sans compte de paiement : pas de blocage).
+  // En cas d'erreur de lecture (réseau), on n'empêche pas l'accès.
+  let exempte = false;
+  try { exempte = await window.AbbaSync.estExempte(user); } catch (e) { exempte = false; }
+  if (!exempte) {
+    try {
+      const cert = await window.AbbaSync.getCertificatParcours(user.uid);
+      if (!cert) {
+        afficherVerrou(`<h2>🔒 Mise en Action</h2>
+          <p>La Mise en Action s’ouvre quand ton <strong>certificat de fin de formation</strong> du Parcours Bâtisseur est délivré.</p>
+          <p>Termine tes modules dans le Parcours : ton coordinateur te délivrera ensuite ton certificat, et tu pourras entrer ici.</p>
+          <p><a href="../ABBA-Parcours/">← Retour au Parcours Bâtisseur</a></p>`);
+        return;
+      }
+    } catch (e) { /* lecture impossible : pas de blocage */ }
+    try {
+      const cp = await window.AbbaSync.getComptePaiement(user.uid);
+      if (cp && cp.actif !== false && Number(cp.paye || 0) < Number(cp.total ?? 5000)) {
+        afficherVerrou(`<h2>🔒 Mise en Action</h2>
+          <p>La Mise en Action s’ouvre une fois les ${Number(cp.total ?? 5000).toLocaleString("fr-FR")} F du Parcours payés.</p>
+          <p><strong>Versé : ${Number(cp.paye || 0).toLocaleString("fr-FR")} F sur ${Number(cp.total ?? 5000).toLocaleString("fr-FR")} F.</strong></p>
+          <p>Termine ton paiement dans le Parcours Bâtisseur (carte « Mon paiement » de l’accueil), puis reviens ici.</p>
+          <p><a href="../ABBA-Parcours/">← Retour au Parcours Bâtisseur</a></p>`);
+        return;
+      }
+    } catch (e) { /* en cas d'erreur de lecture, on n'empêche pas l'accès */ }
+  }
 
   const hint = `Connecté(e) en tant que ${user.displayName || user.email}`;
   document.getElementById("accueilEmail").textContent = hint;
@@ -213,6 +241,7 @@ async function onAuthChanged(user) {
     loadPdpIntoForm();
     updatePdpProgress();
     updateAccueilPdpHint();
+    afficherReprise();
   });
 
   // Rencontres
@@ -291,10 +320,10 @@ function buildS3Dimensions() {
       <div class="dim-eval-card" id="s3-card-${dim.key}">
         <div class="dim-eval-head">
           <span class="dim-eval-title">${dim.icone} ${dim.label}</span>
-          <span class="dim-eval-score" id="s3-score-display-${dim.key}">5</span>
+          <span class="dim-eval-score" id="s3-score-display-${dim.key}">3/5</span>
         </div>
         <div class="dim-score-row">
-          <input type="range" min="1" max="10" value="5" id="s3-range-${dim.key}"
+          <input type="range" min="1" max="5" value="3" id="s3-range-${dim.key}"
             oninput="updateDimScore('${dim.key}')">
           <span class="dim-level-badge" id="s3-badge-${dim.key}">En développement</span>
         </div>
@@ -320,11 +349,11 @@ function buildS3Dimensions() {
 
 function updateDimScore(key) {
   const val = parseInt(document.getElementById("s3-range-" + key).value);
-  document.getElementById("s3-score-display-" + key).textContent = val + "/10";
+  document.getElementById("s3-score-display-" + key).textContent = val + "/5";
   const badge = document.getElementById("s3-badge-" + key);
-  if (val <= 3) { badge.textContent = "Critique"; badge.className = "dim-level-badge critique"; }
-  else if (val <= 6) { badge.textContent = "En développement"; badge.className = "dim-level-badge dev"; }
-  else if (val <= 8) { badge.textContent = "Bon"; badge.className = "dim-level-badge bon"; }
+  if (val <= 2) { badge.textContent = "Critique"; badge.className = "dim-level-badge critique"; }
+  else if (val === 3) { badge.textContent = "En développement"; badge.className = "dim-level-badge dev"; }
+  else if (val === 4) { badge.textContent = "Bon"; badge.className = "dim-level-badge bon"; }
   else { badge.textContent = "Excellent"; badge.className = "dim-level-badge excellent"; }
 }
 window.updateDimScore = updateDimScore;
@@ -415,6 +444,8 @@ function loadPdpIntoForm() {
   const d = MY_PDP;
 
   // S1
+  setVal("s1Nom",       d.s1?.nom);
+  setVal("s1Pays",      d.s1?.pays);
   setVal("s1Membre",    d.s1?.membre);
   setVal("s1Base",      d.s1?.base);
   setVal("s1Eglise",    d.s1?.eglise);
@@ -452,7 +483,7 @@ function loadPdpIntoForm() {
     const v = d.s3?.[dim.key];
     if (!v) return;
     const range = document.getElementById("s3-range-" + dim.key);
-    if (range && v.note) { range.value = v.note; updateDimScore(dim.key); }
+    if (range && v.note) { range.value = n5(v.note); updateDimScore(dim.key); }
     setVal("s3-desc-" + dim.key,  v.desc);
     setVal("s3-forts-" + dim.key, v.forts);
     setVal("s3-defis-" + dim.key, v.defis);
@@ -554,6 +585,8 @@ async function savePdp() {
 
   const data = {
     s1: {
+      nom:       getVal("s1Nom"),
+      pays:      getVal("s1Pays"),
       membre:    getVal("s1Membre"),
       base:      getVal("s1Base"),
       eglise:    getVal("s1Eglise"),
@@ -643,7 +676,7 @@ async function savePdp() {
   // S3 — dimensions
   DIMENSIONS.forEach(dim => {
     data.s3[dim.key] = {
-      note:  parseInt(document.getElementById("s3-range-" + dim.key)?.value) || 5,
+      note:  parseInt(document.getElementById("s3-range-" + dim.key)?.value) || 3,
       desc:  getVal("s3-desc-" + dim.key),
       forts: getVal("s3-forts-" + dim.key),
       defis: getVal("s3-defis-" + dim.key),
@@ -671,6 +704,92 @@ async function savePdp() {
     console.error(err);
     btn.textContent = "Erreur — Réessayer"; btn.disabled = false;
   }
+}
+
+
+// ─────────────────────────────────────────────────────────────
+// REPRISE depuis le Parcours Bâtisseur (nom, pays, MBTI, auto-évaluation, niveaux des modules)
+// L'étudiant vérifie puis confirme ; rien n'est écrit dans son PDP avant sa confirmation.
+// ─────────────────────────────────────────────────────────────
+let REPRISE = null;
+let REPRISE_EN_COURS = false;
+
+function nomPays(code) {
+  try { return new Intl.DisplayNames(["fr"], { type: "region" }).of(code) || code; } catch (e) { return code; }
+}
+
+async function afficherReprise() {
+  const box = document.getElementById("repriseCard");
+  if (!box || !CURRENT_USER) return;
+  if (MY_PDP?.pont?.confirmeLe) { box.innerHTML = ""; return; }
+  let r = null;
+  try { r = await window.AbbaSync.getReprise(CURRENT_USER.uid); } catch (e) { r = null; }
+  if (!r || !(r.nom || r.paysCode || r.mbti || r.notes || r.niveaux)) { box.innerHTML = ""; return; }
+  REPRISE = r;
+  const lignes = [];
+  if (r.nom)      lignes.push(`<li><strong>Nom :</strong> ${escapeAttr(r.nom)}</li>`);
+  if (r.paysCode) lignes.push(`<li><strong>Pays :</strong> ${escapeAttr(nomPays(r.paysCode))}</li>`);
+  if (r.mbti)     lignes.push(`<li><strong>Profil MBTI :</strong> ${escapeAttr(r.mbti)}</li>`);
+  if (r.notes) {
+    lignes.push(`<li><strong>Auto-évaluation de départ (sur 5) :</strong> ` +
+      DIMENSIONS.map((d, i) => `${d.icone} ${d.label} ${r.notes[i] || "—"}`).join(" · ") + `</li>`);
+  } else {
+    lignes.push(`<li><strong>Auto-évaluation de départ :</strong> pas encore faite dans le Parcours (tu la feras ici à l’étape S3).</li>`);
+  }
+  if (r.niveaux) {
+    lignes.push(`<li><strong>Modules :</strong> ${r.nbValides} validé(s) dans le Parcours. Niveau de départ proposé : 3 pour un module validé, 1 sinon (tu pourras l’ajuster à l’étape S4).</li>`);
+  }
+  box.innerHTML = `
+    <div class="card" style="border-left:4px solid var(--accent, #c9962b);margin-bottom:16px;">
+      <p class="eyebrow">Reprise depuis ton Parcours Bâtisseur</p>
+      <p class="settings-hint">Voici ce que nous avons retrouvé de ta formation. Vérifie, puis confirme pour l’ajouter à ton PDP. Tu pourras tout modifier ensuite.</p>
+      <ul style="margin:8px 0 12px 18px;padding:0;line-height:1.6;">${lignes.join("")}</ul>
+      <button class="btn-primary" id="repriseConfirmBtn" type="button">Confirmer et reprendre dans mon PDP</button>
+      <p id="repriseMsg" class="settings-hint" style="margin-top:8px;"></p>
+    </div>`;
+  document.getElementById("repriseConfirmBtn").addEventListener("click", confirmerReprise);
+}
+
+async function confirmerReprise() {
+  if (!REPRISE || REPRISE_EN_COURS || !CURRENT_USER) return;
+  REPRISE_EN_COURS = true;
+  const btn = document.getElementById("repriseConfirmBtn");
+  const msg = document.getElementById("repriseMsg");
+  btn.disabled = true; btn.textContent = "Reprise en cours…";
+  const r = REPRISE;
+  // On ne remplace jamais ce que la personne a déjà saisi
+  const videSinon = (id, val) => { const el = document.getElementById(id); if (el && val && !el.value) el.value = val; };
+  videSinon("s1Nom", r.nom);
+  videSinon("s1Pays", r.paysCode ? nomPays(r.paysCode) : "");
+  videSinon("s2Mbti", r.mbti);
+  if (r.notes && !(MY_PDP?.s3 && Object.keys(MY_PDP.s3).length)) {
+    DIMENSIONS.forEach((dim, i) => {
+      const v = r.notes[i];
+      const range = document.getElementById("s3-range-" + dim.key);
+      if (range && v) { range.value = v; updateDimScore(dim.key); }
+    });
+  }
+  if (r.niveaux) {
+    r.niveaux.forEach((val, i) => {
+      const el = document.getElementById("s4-mod-" + i);
+      if (el && (!el.value || el.value === "0")) el.value = val;
+    });
+  }
+  try {
+    await savePdp();   // enregistre tout le formulaire (et met à jour le résumé du mentor)
+    await window.AbbaSync.saveMyPDP(CURRENT_USER.uid, {
+      s1: { paysCode: r.paysCode || "" },
+      pont: { confirmeLe: new Date().toISOString(), source: "parcours" },
+    });
+    if (msg) msg.textContent = "";
+  } catch (e) {
+    console.error(e);
+    REPRISE_EN_COURS = false;
+    btn.disabled = false; btn.textContent = "Confirmer et reprendre dans mon PDP";
+    if (msg) msg.textContent = "Impossible d’enregistrer pour le moment. Vérifie ta connexion et réessaie.";
+    return;
+  }
+  REPRISE_EN_COURS = false;
 }
 
 function updatePdpProgress() {
@@ -747,15 +866,15 @@ function renderRencontreForm() {
         placeholder="Points discutés lors de cette rencontre…"></textarea>
     </label>
 
-    <p class="eyebrow" style="margin-top:4px;">Évaluation des 8 dimensions (1–10)</p>
+    <p class="eyebrow" style="margin-top:4px;">Évaluation des 8 dimensions (1–5)</p>
     <div class="dim-grid">
       ${DIMENSIONS.map(dim => `
         <div class="dim-item">
           <span class="dim-label">${dim.icone} ${dim.label}</span>
           <div class="dim-score">
-            <input type="range" min="1" max="10" value="5"
+            <input type="range" min="1" max="5" value="3"
               id="r-dim-${dim.key}" oninput="updateRDim('${dim.key}')">
-            <span class="dim-score-val" id="r-dim-val-${dim.key}">5</span>
+            <span class="dim-score-val" id="r-dim-val-${dim.key}">3</span>
           </div>
         </div>
       `).join("")}
@@ -814,7 +933,7 @@ function renderRencontreHistorique() {
     const d = MY_RENCONTRES[k];
     const moisNum = MOIS_KEYS.indexOf(k) + 1;
     const dimsHtml = DIMENSIONS.map(dim => {
-      const val = d.notes8dim?.[dim.key] || "—";
+      const val = d.notes8dim?.[dim.key] ? n5(d.notes8dim[dim.key]) : "—";
       return `<span class="histo-dim">${dim.icone} <strong>${val}</strong><small>${dim.label.substring(0,5)}</small></span>`;
     }).join("");
     return `
@@ -851,7 +970,7 @@ window.saveRencontre = async function(moisKey) {
   const moisNum = MOIS_KEYS.indexOf(moisKey) + 1;
   const notes8dim = {};
   DIMENSIONS.forEach(dim => {
-    notes8dim[dim.key] = parseInt(document.getElementById("r-dim-" + dim.key)?.value) || 5;
+    notes8dim[dim.key] = parseInt(document.getElementById("r-dim-" + dim.key)?.value) || 3;
   });
   const defisPartages = document.getElementById("r-defisPartages")?.checked || false;
 
@@ -902,9 +1021,9 @@ function updateBilan() {
 
   const r1 = MY_RENCONTRES["mois1"] || {};
   const notesDebut = MY_PDP?.s3 ?
-    DIMENSIONS.reduce((acc, d) => { acc[d.key] = MY_PDP.s3[d.key]?.note || 0; return acc; }, {}) :
-    (r1.notes8dim || {});
-  const notesFin = r6.notes8dim || {};
+    DIMENSIONS.reduce((acc, d) => { acc[d.key] = n5(MY_PDP.s3[d.key]?.note); return acc; }, {}) :
+    Object.fromEntries(Object.entries(r1.notes8dim || {}).map(([k, v]) => [k, n5(v)]));
+  const notesFin = Object.fromEntries(Object.entries(r6.notes8dim || {}).map(([k, v]) => [k, n5(v)]));
 
   // Tableau comparatif
   const rows = DIMENSIONS.map(dim => {
@@ -915,8 +1034,8 @@ function updateBilan() {
     const sign  = diff > 0 ? "+" : "";
     return `<tr>
       <td>${dim.icone} ${dim.label}</td>
-      <td>${debut}/10</td>
-      <td>${fin}/10</td>
+      <td>${debut}/5</td>
+      <td>${fin}/5</td>
       <td class="${cls}">${sign}${diff}</td>
     </tr>`;
   });
@@ -938,8 +1057,8 @@ function updateBilan() {
           ${rows.join("")}
           <tr style="font-weight:700;border-top:1px solid var(--ink);">
             <td>Moyenne</td>
-            <td>${dMoy}/10</td>
-            <td>${fMoy}/10</td>
+            <td>${dMoy}/5</td>
+            <td>${fMoy}/5</td>
             <td class="${cls}">${diffMoy > 0 ? "+" : ""}${diffMoy}</td>
           </tr>
         </tbody>
@@ -955,9 +1074,9 @@ function updateBilan() {
             <div class="radar-bar-row">
               <span class="radar-bar-label">${dim.icone} ${dim.label}</span>
               <div class="radar-bar-track">
-                <div class="radar-bar-fill" style="width:${val * 10}%"></div>
+                <div class="radar-bar-fill" style="width:${val * 20}%"></div>
               </div>
-              <span class="radar-bar-val">${val}/10</span>
+              <span class="radar-bar-val">${val}/5</span>
             </div>`;
         }).join("")}
       </div>
@@ -1093,7 +1212,7 @@ window.showPdpMentor = async function(uid) {
     const v = d.s3?.[dim.key];
     return v ? `<div class="pdp-mentor-row">
       <dt>${dim.icone} ${dim.label}</dt>
-      <dd>${v.note || "—"}/10 — ${v.desc || ""}</dd>
+      <dd>${v.note ? n5(v.note) : "—"}/5 — ${v.desc || ""}</dd>
     </div>` : "";
   }).join("");
 

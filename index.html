@@ -118,6 +118,9 @@ if ('serviceWorker' in navigator) {
       </div>
       <p class="settings-hint" style="margin:-8px 0 16px;">Plan de Développement Personnel — Phase 2 (6 mois)</p>
 
+      <!-- Reprise des données du Parcours (affichée tant que l'étudiant n'a pas confirmé) -->
+      <div id="repriseCard"></div>
+
       <!-- Navigation des sections PDP -->
       <div class="pdp-nav" id="pdpNav">
         <button class="pdp-tab active" data-section="s1">S1</button>
@@ -136,6 +139,12 @@ if ('serviceWorker' in navigator) {
       <div class="pdp-section active" id="pdp-s1">
         <div class="card">
           <p class="eyebrow">S1 — Informations du Bâtisseur</p>
+          <label class="field"><span>Nom et prénom</span>
+            <input type="text" id="s1Nom" class="text-input" placeholder="Repris de ton compte Parcours">
+          </label>
+          <label class="field"><span>Pays</span>
+            <input type="text" id="s1Pays" class="text-input" placeholder="Ex. Bénin">
+          </label>
           <label class="field"><span>Numéro de membre ABBA</span>
             <input type="text" id="s1Membre" class="text-input" placeholder="Ex. ABBA-2026-001">
           </label>
