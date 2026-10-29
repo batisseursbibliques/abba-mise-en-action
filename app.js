@@ -378,7 +378,7 @@ async function onAuthChanged(user) {
   // PDP
   unsubPDP = window.AbbaSync.watchMyPDP(user.uid, (data) => {
     MY_PDP = data;
-    loadPdpIntoForm();
+    chargerPdpPreservantBrouillon();
     updatePdpProgress();
     updateAccueilPdpHint();
     afficherReprise();
@@ -425,6 +425,151 @@ function applyRoles() {
 // ─────────────────────────────────────────────────────────────
 // PDP — navigation sections
 // ─────────────────────────────────────────────────────────────
+// <<PDP-MODELE
+// Les 13 étapes du PDP. « oblig » : étape obligatoire pour la certification.
+const ETAPES = [
+  { key: "s1",  titre: "Informations",                      oblig: false },
+  { key: "s2",  titre: "Vision et identité",                oblig: true  },
+  { key: "s3",  titre: "Évaluation des 8 dimensions",       oblig: true  },
+  { key: "s4",  titre: "Intégration des 14 modules",        oblig: false },
+  { key: "s5",  titre: "Ministère",                         oblig: true  },
+  { key: "s6",  titre: "Projet personnel",                  oblig: true  },
+  { key: "s7",  titre: "Objectifs SMART",                   oblig: false },
+  { key: "s8",  titre: "Leadership",                        oblig: false },
+  { key: "s9",  titre: "Gestion du temps",                  oblig: false },
+  { key: "s10", titre: "Relations",                         oblig: false },
+  { key: "s11", titre: "Service communautaire : plan",      oblig: false },
+  { key: "s12", titre: "Engagement et redevabilité",        oblig: true  },
+  { key: "s13", titre: "Fruits de l’Esprit et disciplines", oblig: false },
+];
+const FRUITS_ESPRIT = ["amour","joie","paix","patience","bienveillance","bonte","fidelite","douceur","maitrise"];
+const DISCIPLINES   = ["priere","bible","meditation","jeune","adoration","communion","service","partage","generosite","silence"];
+
+// Vrai si la valeur contient quelque chose de réellement rempli (texte non vide, nombre > 0, case cochée)
+function aDuContenu(v) {
+  if (v == null) return false;
+  if (typeof v === "string") return v.trim() !== "";
+  if (typeof v === "number") return v > 0;
+  if (typeof v === "boolean") return v === true;
+  if (Array.isArray(v)) return v.some(aDuContenu);
+  if (typeof v === "object") return Object.values(v).some(aDuContenu);
+  return false;
+}
+// « terminee » : la personne l'a marquée terminée ; « commencee » : il y a du contenu ; sinon « afaire »
+function statutEtape(pdp, key) {
+  if (pdp && pdp.etapes && pdp.etapes[key] && pdp.etapes[key].fait === true) return "terminee";
+  return aDuContenu(pdp && pdp[key]) ? "commencee" : "afaire";
+}
+function calculerProgression(pdp) {
+  const statuts = {}; let terminees = 0;
+  ETAPES.forEach(e => { statuts[e.key] = statutEtape(pdp, e.key); if (statuts[e.key] === "terminee") terminees++; });
+  const pct = Math.round(terminees / ETAPES.length * 100);
+  const manquantes = ETAPES.filter(e => e.oblig && statuts[e.key] !== "terminee").map(e => e.key);
+  return { statuts, terminees, total: ETAPES.length, pct, manquantes, atteint: pct >= 80 && manquantes.length === 0 };
+}
+// Message si l'étape ne peut pas encore être marquée terminée ("" si tout va bien). d = données du formulaire.
+function problemeEtape(key, d) {
+  const plein = (x) => aDuContenu(x);
+  switch (key) {
+    case "s2":  return plein(d.s2?.vision) && plein(d.s2?.mission) ? "" : "Pour terminer cette étape, écris au moins ta vision à 5 ans et ta mission de vie.";
+    case "s3":  return DIMENSIONS.every(dim => d.s3?.[dim.key]?.note > 0) ? "" : "Pour terminer cette étape, évalue les 8 dimensions (bouge chaque curseur).";
+    case "s5":  return plein(d.s5?.ministre) && plein(d.s5?.raisons) ? "" : "Pour terminer cette étape, choisis ton ministère et écris tes raisons.";
+    case "s6":  return plein(d.s6?.typeProjet) && plein(d.s6?.description) ? "" : "Pour terminer cette étape, choisis le type de ton projet et décris-le.";
+    case "s12": return plein(d.s12?.engagements) && d.s12?.confirme === true ? "" : "Pour terminer cette étape, écris tes engagements et coche « Je confirme ces engagements ».";
+    default:    return plein(d[key]) ? "" : "Remplis au moins un champ avant de terminer cette étape.";
+  }
+}
+// PDP-MODELE>>
+
+// Outils de la formation à relire pour chaque étape
+const OUTILS_ETAPES = {
+  s2:  "Module 5 — Bâtir le Caractère : reprends tes exercices pour nourrir ta vision, tes forces et tes talents.",
+  s4:  "Relis tes modules dans le Parcours avant de te noter.",
+  s5:  "Module 10 — Les Ministères de Dieu : relis-le avant de choisir ton ministère.",
+  s6:  "Module 14 — Création de richesse (14.1 et 14.2) : les leçons t’aident à choisir et à construire ton projet.",
+  s7:  "Module 11 — Maîtriser sa santé et son argent : le budget en 4 enveloppes t’aide pour tes objectifs financiers.",
+  s10: "Module 4 — Aimer : relis-le pour préparer les relations à restaurer.",
+  s11: "Module 12 — Citoyenneté responsable : des idées pour ta communauté.",
+  s13: "Module 7 — Victoire par la Prière : ton journal de prière. Module 6 — Le Saint-Esprit : les fruits de l’Esprit.",
+};
+
+// Sections modifiées mais pas encore enregistrées : un rechargement venu du serveur ne doit pas les écraser
+const PDP_DIRTY = new Set();
+
+function chargerPdpPreservantBrouillon() {
+  if (!PDP_DIRTY.size) { loadPdpIntoForm(); return; }
+  const brouillon = collectPdpData();
+  const sauve = MY_PDP;
+  const fusion = { ...MY_PDP };
+  PDP_DIRTY.forEach(k => { fusion[k] = brouillon[k]; });
+  MY_PDP = fusion;
+  try { loadPdpIntoForm(); } finally { MY_PDP = sauve; }
+}
+
+function construirePiedsEtapes() {
+  ETAPES.forEach((e, i) => {
+    const sec = document.getElementById("pdp-" + e.key);
+    if (!sec) return;
+    if (OUTILS_ETAPES[e.key]) sec.insertAdjacentHTML("afterbegin",
+      `<p class="pdp-outil">🧰 <strong>Outil de la formation :</strong> ${OUTILS_ETAPES[e.key]} <a href="../ABBA-Parcours/">Ouvrir le Parcours</a></p>`);
+    sec.insertAdjacentHTML("beforeend", `
+      <div class="pdp-step-foot">
+        <div class="pdp-step-status" id="stepStatus-${e.key}"></div>
+        <div class="pdp-step-buttons">
+          <button class="btn-secondary" type="button" data-step-save="${e.key}">💾 Enregistrer cette étape</button>
+          <button class="btn-primary" type="button" data-step-done="${e.key}">✓ Marquer comme terminée</button>
+          ${i < ETAPES.length - 1 ? `<button class="btn-secondary" type="button" data-step-next="${ETAPES[i + 1].key}">Étape suivante →</button>` : ""}
+        </div>
+        <p class="settings-hint" id="stepMsg-${e.key}" style="margin-top:6px;"></p>
+      </div>`);
+  });
+  const panneau = document.getElementById("panel-pdp");
+  panneau.addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-step-save],button[data-step-done],button[data-step-next]");
+    if (!b) return;
+    if (b.dataset.stepSave) enregistrerEtape(b.dataset.stepSave);
+    else if (b.dataset.stepDone) basculerEtape(b.dataset.stepDone);
+    else if (b.dataset.stepNext) {
+      document.querySelector(`.pdp-tab[data-section="${b.dataset.stepNext}"]`)?.click();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  });
+  const marquer = (ev) => { const sec = ev.target.closest(".pdp-section"); if (sec) PDP_DIRTY.add(sec.id.replace("pdp-", "")); };
+  panneau.addEventListener("input", marquer);
+  panneau.addEventListener("change", marquer);
+}
+
+function boutonsEtape(key, actifs) {
+  document.querySelectorAll(`#pdp-${key} .pdp-step-foot button`).forEach(b => { b.disabled = !actifs; });
+}
+async function enregistrerEtape(key) {
+  const msg = document.getElementById("stepMsg-" + key);
+  boutonsEtape(key, false); msg.textContent = "Enregistrement…";
+  const ok = await savePdp(key);
+  msg.textContent = ok ? "✓ Enregistré" : "Impossible d’enregistrer pour le moment. Vérifie ta connexion et réessaie.";
+  boutonsEtape(key, true);
+}
+async function basculerEtape(key) {
+  const msg = document.getElementById("stepMsg-" + key);
+  const deja = MY_PDP?.etapes?.[key]?.fait === true;
+  if (!deja) {
+    const pb = problemeEtape(key, collectPdpData());
+    if (pb) { msg.textContent = pb; return; }
+  }
+  boutonsEtape(key, false); msg.textContent = "Enregistrement…";
+  try {
+    if (!(await savePdp(key))) throw new Error("enregistrement");
+    const etapes = { [key]: { fait: !deja, le: new Date().toISOString() } };
+    await window.AbbaSync.saveMyPDP(CURRENT_USER.uid, { etapes });
+    await pushSummary({ etapes });
+    msg.textContent = deja ? "Étape rouverte." : "✓ Étape terminée.";
+  } catch (e) {
+    console.error(e);
+    msg.textContent = "Impossible d’enregistrer pour le moment. Vérifie ta connexion et réessaie.";
+  }
+  boutonsEtape(key, true);
+}
+
 function setupPdpNav() {
   // Construire les sous-sections dynamiques
   buildS3Dimensions();
@@ -442,8 +587,9 @@ function setupPdpNav() {
     });
   });
 
-  // Bouton enregistrer
-  document.getElementById("savePdpBtn").addEventListener("click", savePdp);
+  // Pieds d'étape : enregistrer / terminer / étape suivante, outils de la formation, suivi des brouillons
+  construirePiedsEtapes();
+  updatePdpProgress();
 
   // Total heures S9
   ["s9Travail","s9Formation","s9Abba","s9Spiritu","s9Famille","s9Repos","s9Sommeil"].forEach(id => {
@@ -720,13 +866,25 @@ function loadPdpIntoForm() {
   setCheck("s10Equipe",         d.s10?.equipe);
   setCheck("s10Negociation",    d.s10?.negociation);
   setVal("s10PlanAction",  d.s10?.planAction);
+
+  // S11 — service communautaire : plan
+  setVal("s11Zone",          d.s11?.zone);
+  setVal("s11Besoin",        d.s11?.besoin);
+  setVal("s11Action",        d.s11?.action);
+  setVal("s11Beneficiaires", d.s11?.beneficiaires);
+  // S12 — engagement et redevabilité
+  setVal("s12Engagements", d.s12?.engagements);
+  setVal("s12Partenaires", d.s12?.partenaires);
+  setVal("s12Frequence",   d.s12?.frequence);
+  setCheck("s12Confirme",  d.s12?.confirme);
+  // S13 — fruits de l'Esprit et disciplines
+  FRUITS_ESPRIT.forEach(k => setVal("s13f-" + k, d.s13?.fruits?.[k] || ""));
+  DISCIPLINES.forEach(k => setVal("s13d-" + k, d.s13?.disciplines?.[k] || ""));
+  setVal("s13Priorite", d.s13?.priorite);
 }
 
-async function savePdp() {
-  if (!CURRENT_USER) return;
-  const btn = document.getElementById("savePdpBtn");
-  btn.textContent = "Enregistrement…"; btn.disabled = true;
-
+// Lit tout le formulaire et rend les données du PDP (sans rien enregistrer)
+function collectPdpData() {
   const data = {
     s1: {
       nom:       getVal("s1Nom"),
@@ -840,15 +998,42 @@ async function savePdp() {
     });
   });
 
+  // S11 — service communautaire : plan
+  data.s11 = {
+    zone:          getVal("s11Zone"),
+    besoin:        getVal("s11Besoin"),
+    action:        getVal("s11Action"),
+    beneficiaires: getVal("s11Beneficiaires"),
+  };
+  // S12 — engagement et redevabilité
+  const confirme = getCheck("s12Confirme");
+  data.s12 = {
+    engagements: getVal("s12Engagements"),
+    partenaires: getVal("s12Partenaires"),
+    frequence:   getVal("s12Frequence"),
+    confirme,
+  };
+  if (confirme) data.s12.confirmeLe = MY_PDP?.s12?.confirmeLe || new Date().toISOString();
+  // S13 — fruits de l'Esprit et disciplines (évaluation de départ, 1 à 5 ; rien d'enregistré tant que la case reste sur « — »)
+  data.s13 = { fruits: {}, disciplines: {}, priorite: getVal("s13Priorite") };
+  FRUITS_ESPRIT.forEach(k => { const v = getVal("s13f-" + k); if (v) data.s13.fruits[k] = Number(v); });
+  DISCIPLINES.forEach(k => { const v = getVal("s13d-" + k); if (v) data.s13.disciplines[k] = Number(v); });
+  return data;
+}
+
+// Enregistre tout le PDP, ou une seule étape (onlyKey). Rend true si c'est enregistré.
+async function savePdp(onlyKey) {
+  if (!CURRENT_USER) return false;
+  const data = collectPdpData();
+  const aEcrire = onlyKey ? { [onlyKey]: data[onlyKey] } : data;
   try {
-    await window.AbbaSync.saveMyPDP(CURRENT_USER.uid, data);
-    // Mettre à jour le résumé pour le mentor
-    await pushSummary();
-    btn.textContent = "✓ Enregistré";
-    setTimeout(() => { btn.textContent = "Enregistrer"; btn.disabled = false; }, 2000);
+    await window.AbbaSync.saveMyPDP(CURRENT_USER.uid, aEcrire);
+    if (onlyKey) PDP_DIRTY.delete(onlyKey); else PDP_DIRTY.clear();
+    await pushSummary(aEcrire);   // met à jour le résumé du mentor
+    return true;
   } catch (err) {
     console.error(err);
-    btn.textContent = "Erreur — Réessayer"; btn.disabled = false;
+    return false;
   }
 }
 
@@ -926,7 +1111,7 @@ async function confirmerReprise() {
     });
   }
   try {
-    await savePdp();   // enregistre tout le formulaire (et met à jour le résumé du mentor)
+    if (!(await savePdp())) throw new Error("enregistrement du PDP");   // enregistre tout le formulaire (et met à jour le résumé du mentor)
     await window.AbbaSync.saveMyPDP(CURRENT_USER.uid, {
       s1: { paysCode: r.paysCode || "" },
       pont: { confirmeLe: new Date().toISOString(), source: "parcours", notesParcours: r.notes || null },
@@ -943,27 +1128,40 @@ async function confirmerReprise() {
 }
 
 function updatePdpProgress() {
-  if (!MY_PDP || !Object.keys(MY_PDP).length) return;
-  // Score simple : combien de sections ont au moins un champ rempli
-  const sections = ["s1","s2","s3","s4","s5","s6","s7","s8","s9","s10"];
-  const filled = sections.filter(s => MY_PDP[s] && Object.keys(MY_PDP[s]).length).length;
-  const pct = Math.round((filled / sections.length) * 100);
-  // Colorier les onglets PDP terminés
-  sections.forEach(s => {
-    const tab = document.querySelector(`.pdp-tab[data-section="${s}"]`);
-    if (tab && MY_PDP[s] && Object.keys(MY_PDP[s]).length) tab.classList.add("done");
+  const prog = calculerProgression(MY_PDP || {});
+  ETAPES.forEach(e => {
+    const st = prog.statuts[e.key];
+    const tab = document.querySelector(`.pdp-tab[data-section="${e.key}"]`);
+    if (tab) { tab.classList.toggle("done", st === "terminee"); tab.classList.toggle("started", st === "commencee"); }
+    const el = document.getElementById("stepStatus-" + e.key);
+    if (el) {
+      el.className = "pdp-step-status " + st;
+      el.textContent = { afaire: "À faire", commencee: "Commencée", terminee: "Terminée ✓" }[st] + (e.oblig ? " · étape obligatoire pour la certification" : "");
+    }
+    const bd = document.querySelector(`[data-step-done="${e.key}"]`);
+    if (bd) bd.textContent = st === "terminee" ? "↺ Rouvrir l’étape" : "✓ Marquer comme terminée";
   });
+  const box = document.getElementById("pdpProgress");
+  if (box) {
+    const oblig = ETAPES.filter(e => e.oblig).map(e => e.key.toUpperCase()).join(", ");
+    const reste = prog.manquantes.map(k => k.toUpperCase()).join(", ");
+    box.innerHTML = `
+      <p class="eyebrow">Ma progression</p>
+      <div class="pdp-bar"><span style="width:${prog.pct}%"></span></div>
+      <p style="margin:0;"><strong>${prog.terminees} étape${prog.terminees > 1 ? "s" : ""} terminée${prog.terminees > 1 ? "s" : ""} sur ${prog.total}</strong> · ${prog.pct} %</p>
+      <p class="settings-hint" style="margin-top:6px;">Pour la certification : au moins 80 %, avec les étapes obligatoires terminées (${oblig}).
+        ${prog.atteint ? "✓ Objectif atteint." : (prog.manquantes.length ? "Obligatoires restantes : " + reste + "." : "")}</p>`;
+  }
 }
 
 function updateAccueilPdpHint() {
   const hint = document.getElementById("accueilPdpHint");
-  if (!MY_PDP || !Object.keys(MY_PDP).length) {
-    hint.textContent = "Remplis ton PDP pour démarrer ta Phase 2.";
-  } else {
-    const sections = ["s1","s2","s3","s4","s5","s6","s7","s8","s9","s10"];
-    const filled = sections.filter(s => MY_PDP[s] && Object.keys(MY_PDP[s]).length).length;
-    hint.textContent = `${filled} / ${sections.length} sections complétées.`;
-  }
+  if (!hint) return;
+  const prog = calculerProgression(MY_PDP || {});
+  const commence = Object.values(prog.statuts).some(st => st !== "afaire");
+  hint.textContent = commence
+    ? `${prog.terminees} étape${prog.terminees > 1 ? "s" : ""} terminée${prog.terminees > 1 ? "s" : ""} sur ${prog.total} (${prog.pct} %).`
+    : "Remplis ton PDP pour démarrer ta Phase 2.";
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1263,7 +1461,7 @@ function updateBilan() {
 // ─────────────────────────────────────────────────────────────
 // RÉSUMÉ — pushé vers Firestore pour mentor/admin
 // ─────────────────────────────────────────────────────────────
-async function pushSummary() {
+async function pushSummary(extra) {
   if (!CURRENT_USER) return;
   const profile = await window.AbbaSync.getUserProfile(CURRENT_USER.uid) || {};
   const moisDone = MOIS_KEYS.filter(k => MY_RENCONTRES[k]?.date).length;
@@ -1272,6 +1470,10 @@ async function pushSummary() {
 
   // Prochaine rencontre = mois suivant non complété
   const prochainMois = MOIS_KEYS.find(k => !MY_RENCONTRES[k]?.date);
+
+  // Progression calculée sur ce qui vient d'être enregistré (le serveur n'a pas encore renvoyé la nouvelle version)
+  const pdpVue = { ...MY_PDP, ...(extra || {}), etapes: { ...(MY_PDP?.etapes || {}), ...((extra || {}).etapes || {}) } };
+  const prog = calculerProgression(pdpVue);
 
   const summary = {
     nom:           profile.nom || "",
@@ -1283,7 +1485,9 @@ async function pushSummary() {
     dernieresVictoires: derniereRencontre?.victoires || "",
     derniersDefis:      derniereRencontre?.defisPartages ? (derniereRencontre?.defis || "") : null,
     prochaineRencontre: prochainMois || "bilan",
-    pdpComplet:    Object.keys(MY_PDP).length >= 8,
+    pdpComplet:    prog.atteint,
+    pdpPct:        prog.pct,
+    pdpEtapes:     prog.terminees,
     // mentorEmail / mentorNom ne sont PAS écrits ici : le coordinateur les pose lors de l'affectation
     // (les règles de sécurité refusent qu'un bâtisseur les modifie lui-même).
   };
@@ -1328,16 +1532,17 @@ async function loadSuivi() {
 
     return `<div class="suivi-accord">
       <button class="suivi-accord-head" onclick="toggleSuivi('${s.uid}')">
-        <span class="suivi-card-name">${s.prenom || ""} ${s.nom || s.email}</span>
+        <span class="suivi-card-name">${escapeAttr(s.prenom || "")} ${escapeAttr(s.nom || s.email)}</span>
         <span class="suivi-badge ${s.moisEnCours}">${moisLabel}</span>
         <span class="suivi-accord-arrow" id="arrow-${s.uid}">▸</span>
       </button>
       <div class="suivi-accord-body" id="body-${s.uid}" style="display:none;">
         <div class="suivi-dims">${dimsHtml}</div>
-        ${s.dernieresVictoires ? `<p style="font-size:12px;color:var(--sage);margin:6px 0 0;">✓ <em>${s.dernieresVictoires.substring(0, 120)}${s.dernieresVictoires.length > 120 ? "…" : ""}</em></p>` : ""}
-        ${s.derniersDefis ? `<p style="font-size:12px;color:var(--brick);margin:4px 0 0;">⚠ <em>${s.derniersDefis.substring(0, 120)}${s.derniersDefis.length > 120 ? "…" : ""}</em></p>` : ""}
+        ${s.dernieresVictoires ? `<p style="font-size:12px;color:var(--sage);margin:6px 0 0;">✓ <em>${escapeAttr(s.dernieresVictoires.substring(0, 120))}${s.dernieresVictoires.length > 120 ? "…" : ""}</em></p>` : ""}
+        ${s.derniersDefis ? `<p style="font-size:12px;color:var(--brick);margin:4px 0 0;">⚠ <em>${escapeAttr(s.derniersDefis.substring(0, 120))}${s.derniersDefis.length > 120 ? "…" : ""}</em></p>` : ""}
         <div class="suivi-meta" style="margin-top:8px;">
-          <span>📅 Débuté : ${s.dateDebut || "—"}</span>
+          <span>📅 Débuté : ${escapeAttr(s.dateDebut || "—")}</span>
+          <span>📋 PDP : ${s.pdpPct != null ? escapeAttr(s.pdpPct) + " %" : "—"}</span>
           <span>→ Prochain : ${s.prochaineRencontre || "—"}</span>
         </div>
         <button class="btn-secondary" style="font-size:12px;padding:7px 12px;margin-top:10px;width:100%;"
@@ -1365,6 +1570,7 @@ window.showPdpMentor = async function(uid) {
   const d = snap;
 
   // Trouver le nom dans SUIVI_DATA
+  const progM = calculerProgression(d);
   const s = SUIVI_DATA.find(x => x.uid === uid) || {};
   const nom = `${s.prenom || ""} ${s.nom || ""}`.trim() || uid;
 
@@ -1372,7 +1578,7 @@ window.showPdpMentor = async function(uid) {
     const v = d.s3?.[dim.key];
     return v ? `<div class="pdp-mentor-row">
       <dt>${dim.icone} ${dim.label}</dt>
-      <dd>${v.note ? n5(v.note) : "—"}/5 — ${v.desc || ""}</dd>
+      <dd>${v.note ? n5(v.note) : "—"}/5 — ${escapeAttr(v.desc || "")}</dd>
     </div>` : "";
   }).join("");
 
@@ -1386,29 +1592,31 @@ window.showPdpMentor = async function(uid) {
   <div class="pdp-mentor-overlay" id="pdpMentorOverlay" onclick="closePdpMentor(event)">
     <div class="pdp-mentor-box">
       <button class="pdp-mentor-close" onclick="document.getElementById('pdpMentorOverlay').remove()">×</button>
-      <h2 style="font-family:var(--font-display);color:var(--navy);margin:0 0 6px;">PDP — ${nom}</h2>
+      <h2 style="font-family:var(--font-display);color:var(--navy);margin:0 0 6px;">PDP — ${escapeAttr(nom)}</h2>
       <p style="font-size:12px;color:var(--ink-soft);margin:0 0 20px;">Plan de Développement Personnel · Phase 2</p>
+
+      <p class="settings-hint" style="margin:0 0 10px;">Progression du PDP : <strong>${progM.pct} %</strong> (${progM.terminees} étape${progM.terminees > 1 ? "s" : ""} terminée${progM.terminees > 1 ? "s" : ""} sur ${progM.total}).</p>
 
       <div class="pdp-mentor-section">
         <h3>S1 — Informations</h3>
-        <div class="pdp-mentor-row"><dt>Membre ABBA</dt><dd>${d.s1?.membre || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Base locale</dt><dd>${d.s1?.base || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Église</dt><dd>${d.s1?.eglise || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Début coaching</dt><dd>${d.s1?.dateDebut || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Fin prévue</dt><dd>${d.s1?.dateFin || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Membre ABBA</dt><dd>${escapeAttr(d.s1?.membre) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Base locale</dt><dd>${escapeAttr(d.s1?.base) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Église</dt><dd>${escapeAttr(d.s1?.eglise) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Début coaching</dt><dd>${escapeAttr(d.s1?.dateDebut) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Fin prévue</dt><dd>${escapeAttr(d.s1?.dateFin) || "—"}</dd></div>
       </div>
 
       <div class="pdp-mentor-section">
         <h3>S2 — Vision et Identité</h3>
-        <div class="pdp-mentor-row"><dt>Verset personnel</dt><dd>${d.s2?.verset || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Vision à 5 ans</dt><dd>${d.s2?.vision || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Mission de vie</dt><dd>${d.s2?.mission || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>MBTI</dt><dd>${d.s2?.mbti || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Forces spirituelles</dt><dd>${d.s2?.forces || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Talents</dt><dd>${d.s2?.talents || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Dons spirituels</dt><dd>${d.s2?.donsSpiris || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Domaines de croissance</dt><dd>${d.s2?.croissance || "—"}</dd></div>
-        ${d.s2?.blessuresPartagees ? `<div class="pdp-mentor-row"><dt>Blessures / blocages</dt><dd>${d.s2?.blessures || "—"}</dd></div>` : `<div class="pdp-mentor-row"><dt>Blessures / blocages</dt><dd><em style="color:var(--ink-soft);">(non partagé)</em></dd></div>`}
+        <div class="pdp-mentor-row"><dt>Verset personnel</dt><dd>${escapeAttr(d.s2?.verset) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Vision à 5 ans</dt><dd>${escapeAttr(d.s2?.vision) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Mission de vie</dt><dd>${escapeAttr(d.s2?.mission) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>MBTI</dt><dd>${escapeAttr(d.s2?.mbti) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Forces spirituelles</dt><dd>${escapeAttr(d.s2?.forces) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Talents</dt><dd>${escapeAttr(d.s2?.talents) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Dons spirituels</dt><dd>${escapeAttr(d.s2?.donsSpiris) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Domaines de croissance</dt><dd>${escapeAttr(d.s2?.croissance) || "—"}</dd></div>
+        ${d.s2?.blessuresPartagees ? `<div class="pdp-mentor-row"><dt>Blessures / blocages</dt><dd>${escapeAttr(d.s2?.blessures) || "—"}</dd></div>` : `<div class="pdp-mentor-row"><dt>Blessures / blocages</dt><dd><em style="color:var(--ink-soft);">(non partagé)</em></dd></div>`}
       </div>
 
       <div class="pdp-mentor-section">
@@ -1419,52 +1627,76 @@ window.showPdpMentor = async function(uid) {
       <div class="pdp-mentor-section">
         <h3>S4 — Intégration des 14 modules</h3>
         ${modulesHtml}
-        <div class="pdp-mentor-row"><dt>Priorité 1</dt><dd>${d.s4?.prio1 || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Priorité 2</dt><dd>${d.s4?.prio2 || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Priorité 3</dt><dd>${d.s4?.prio3 || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Priorité 1</dt><dd>${escapeAttr(d.s4?.prio1) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Priorité 2</dt><dd>${escapeAttr(d.s4?.prio2) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Priorité 3</dt><dd>${escapeAttr(d.s4?.prio3) || "—"}</dd></div>
       </div>
 
       <div class="pdp-mentor-section">
         <h3>S5 — Ministère choisi</h3>
-        <div class="pdp-mentor-row"><dt>Ministère</dt><dd>${d.s5?.ministre || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Raisons</dt><dd>${d.s5?.raisons || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Plan M1-M2</dt><dd>${d.s5?.planM12 || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Plan M3-M4</dt><dd>${d.s5?.planM34 || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Plan M5-M6</dt><dd>${d.s5?.planM56 || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Ministère</dt><dd>${escapeAttr(d.s5?.ministre) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Raisons</dt><dd>${escapeAttr(d.s5?.raisons) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Plan M1-M2</dt><dd>${escapeAttr(d.s5?.planM12) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Plan M3-M4</dt><dd>${escapeAttr(d.s5?.planM34) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Plan M5-M6</dt><dd>${escapeAttr(d.s5?.planM56) || "—"}</dd></div>
       </div>
 
       <div class="pdp-mentor-section">
         <h3>S6 — Projet économique</h3>
-        <div class="pdp-mentor-row"><dt>Type</dt><dd>${d.s6?.typeProjet || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Description</dt><dd>${d.s6?.description || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Objectifs 6 mois</dt><dd>${d.s6?.objectifs || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Revenus visés</dt><dd>${d.s6?.revenusVises ? d.s6.revenusVises + " FCFA/mois" : "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Plan M1</dt><dd>${d.s6?.lancM1 || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Plan M2-M3</dt><dd>${d.s6?.lancM23 || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Plan M4-M6</dt><dd>${d.s6?.lancM46 || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Type</dt><dd>${escapeAttr(d.s6?.typeProjet) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Description</dt><dd>${escapeAttr(d.s6?.description) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Objectifs 6 mois</dt><dd>${escapeAttr(d.s6?.objectifs) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Revenus visés</dt><dd>${d.s6?.revenusVises ? escapeAttr(d.s6.revenusVises) + " FCFA/mois" : "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Plan M1</dt><dd>${escapeAttr(d.s6?.lancM1) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Plan M2-M3</dt><dd>${escapeAttr(d.s6?.lancM23) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Plan M4-M6</dt><dd>${escapeAttr(d.s6?.lancM46) || "—"}</dd></div>
       </div>
 
       <div class="pdp-mentor-section">
         <h3>S8 — Leadership</h3>
-        <div class="pdp-mentor-row"><dt>Formations prévues</dt><dd>${d.s8?.formations || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Modèles</dt><dd>${d.s8?.modeles || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Opportunités</dt><dd>${d.s8?.opportunites || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Formations prévues</dt><dd>${escapeAttr(d.s8?.formations) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Modèles</dt><dd>${escapeAttr(d.s8?.modeles) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Opportunités</dt><dd>${escapeAttr(d.s8?.opportunites) || "—"}</dd></div>
       </div>
 
       <div class="pdp-mentor-section">
         <h3>S9 — Gestion du temps</h3>
-        <div class="pdp-mentor-row"><dt>Ajustements</dt><dd>${d.s9?.ajustements || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>À réduire</dt><dd>${d.s9?.reduire || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>À augmenter</dt><dd>${d.s9?.augmenter || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Ajustements</dt><dd>${escapeAttr(d.s9?.ajustements) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>À réduire</dt><dd>${escapeAttr(d.s9?.reduire) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>À augmenter</dt><dd>${escapeAttr(d.s9?.augmenter) || "—"}</dd></div>
       </div>
 
       <div class="pdp-mentor-section">
         <h3>S10 — Relations</h3>
-        <div class="pdp-mentor-row"><dt>Famille</dt><dd>${d.s10?.famille || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Église</dt><dd>${d.s10?.eglise || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>ABBA</dt><dd>${d.s10?.abba || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Relations à réparer</dt><dd>${d.s10?.reparer || "—"}</dd></div>
-        <div class="pdp-mentor-row"><dt>Plan relationnel</dt><dd>${d.s10?.planAction || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Famille</dt><dd>${escapeAttr(d.s10?.famille) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Église</dt><dd>${escapeAttr(d.s10?.eglise) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>ABBA</dt><dd>${escapeAttr(d.s10?.abba) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Relations à réparer</dt><dd>${escapeAttr(d.s10?.reparer) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Plan relationnel</dt><dd>${escapeAttr(d.s10?.planAction) || "—"}</dd></div>
+      </div>
+
+
+      <div class="pdp-mentor-section">
+        <h3>S11 — Service communautaire : plan</h3>
+        <div class="pdp-mentor-row"><dt>Zone</dt><dd>${escapeAttr(d.s11?.zone) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Besoin identifié</dt><dd>${escapeAttr(d.s11?.besoin) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Action prévue</dt><dd>${escapeAttr(d.s11?.action) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Bénéficiaires</dt><dd>${escapeAttr(d.s11?.beneficiaires) || "—"}</dd></div>
+      </div>
+
+      <div class="pdp-mentor-section">
+        <h3>S12 — Engagement et redevabilité</h3>
+        <div class="pdp-mentor-row"><dt>Engagements</dt><dd>${escapeAttr(d.s12?.engagements) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Partenaires</dt><dd>${escapeAttr(d.s12?.partenaires) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Fréquence</dt><dd>${{ hebdo: "Chaque semaine", quinzaine: "Toutes les deux semaines", mensuel: "Chaque mois" }[d.s12?.frequence] || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Engagement confirmé</dt><dd>${d.s12?.confirme ? "Oui" : "Non"}</dd></div>
+      </div>
+
+      <div class="pdp-mentor-section">
+        <h3>S13 — Fruits de l’Esprit et disciplines (départ, sur 5)</h3>
+        <div class="pdp-mentor-row"><dt>Fruits</dt><dd>${FRUITS_ESPRIT.map(k => ({ amour: "Amour", joie: "Joie", paix: "Paix", patience: "Patience", bienveillance: "Bienveillance", bonte: "Bonté", fidelite: "Fidélité", douceur: "Douceur", maitrise: "Maîtrise de soi" }[k] + " " + (d.s13?.fruits?.[k] || "—"))).join(" · ")}</dd></div>
+        <div class="pdp-mentor-row"><dt>Disciplines</dt><dd>${DISCIPLINES.map(k => ({ priere: "Prière", bible: "Bible", meditation: "Méditation", jeune: "Jeûne", adoration: "Adoration", communion: "Communion fraternelle", service: "Service", partage: "Partage de la foi", generosite: "Générosité", silence: "Silence et solitude" }[k] + " " + (d.s13?.disciplines?.[k] || "—"))).join(" · ")}</dd></div>
+        <div class="pdp-mentor-row"><dt>À faire croître en priorité</dt><dd>${escapeAttr(d.s13?.priorite) || "—"}</dd></div>
       </div>
 
       <button class="btn-secondary" style="width:100%;margin-top:8px;"

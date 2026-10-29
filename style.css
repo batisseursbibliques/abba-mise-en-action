@@ -531,3 +531,16 @@ textarea.text-input{resize:vertical;min-height:60px;}
 .suivi-accord-body{
   padding:0 16px 16px;border-top:1px solid var(--line);
 }
+
+/* PDP par étapes */
+.pdp-tab.started{border-color:var(--gold);color:var(--ink);}
+.pdp-tab.started.active{background:var(--navy);color:#fff;border-color:var(--navy);}
+.pdp-tab.done::after{content:" ✓";}
+.pdp-bar{height:10px;background:var(--line);border-radius:6px;overflow:hidden;margin:8px 0;}
+.pdp-bar>span{display:block;height:100%;background:var(--sage);border-radius:6px;transition:width .3s;}
+.pdp-step-foot{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);}
+.pdp-step-foot .pdp-step-buttons{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
+.pdp-step-status{font-size:13px;font-weight:600;color:var(--ink-soft);}
+.pdp-step-status.terminee{color:var(--sage);}
+.pdp-step-status.commencee{color:var(--gold);}
+.pdp-outil{margin:0 0 12px;font-size:13px;color:var(--ink-soft);background:var(--paper);border-radius:6px;padding:8px 10px;}

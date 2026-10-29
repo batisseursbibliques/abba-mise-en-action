@@ -114,9 +114,11 @@ if ('serviceWorker' in navigator) {
     <section class="panel" id="panel-pdp">
       <div class="panel-head">
         <h1>Mon PDP</h1>
-        <button class="btn-primary" id="savePdpBtn" type="button">Enregistrer</button>
       </div>
-      <p class="settings-hint" style="margin:-8px 0 16px;">Plan de Développement Personnel — Phase 2 (6 mois)</p>
+      <p class="settings-hint" style="margin:-8px 0 16px;">Plan de Développement Personnel — Phase 2 (6 mois). Il se remplit étape par étape : enregistre chaque étape quand tu as fini, puis marque-la comme terminée.</p>
+
+      <!-- Progression du PDP -->
+      <div class="card" id="pdpProgress"></div>
 
       <!-- Reprise des données du Parcours (affichée tant que l'étudiant n'a pas confirmé) -->
       <div id="repriseCard"></div>
@@ -133,6 +135,9 @@ if ('serviceWorker' in navigator) {
         <button class="pdp-tab" data-section="s8">S8</button>
         <button class="pdp-tab" data-section="s9">S9</button>
         <button class="pdp-tab" data-section="s10">S10</button>
+        <button class="pdp-tab" data-section="s11">S11</button>
+        <button class="pdp-tab" data-section="s12">S12</button>
+        <button class="pdp-tab" data-section="s13">S13</button>
       </div>
 
       <!-- S1 — Informations -->
@@ -449,6 +454,81 @@ if ('serviceWorker' in navigator) {
           </div>
           <label class="field" style="margin-top:12px;"><span>Plan d'action relationnel pour les 6 mois</span>
             <textarea id="s10PlanAction" class="text-input" rows="3" placeholder="Actions concrètes pour améliorer tes relations…"></textarea>
+          </label>
+        </div>
+      </div>
+
+      <!-- S11 — Service communautaire : plan -->
+      <div class="pdp-section" id="pdp-s11">
+        <div class="card">
+          <p class="eyebrow">S11 — Service communautaire : plan</p>
+          <p class="settings-hint">Tu vas rendre un service à ta communauté pendant ces 6 mois. Décris ici ce que tu prévois. Le service réalisé sera enregistré plus tard dans l’application.</p>
+          <label class="field"><span>Zone d’intervention</span>
+            <input type="text" id="s11Zone" class="text-input" placeholder="Quartier, village, commune…">
+          </label>
+          <label class="field"><span>Besoin identifié</span>
+            <textarea id="s11Besoin" class="text-input" rows="3" placeholder="Quel besoin as-tu observé autour de toi ?"></textarea>
+          </label>
+          <label class="field"><span>Action prévue</span>
+            <textarea id="s11Action" class="text-input" rows="3" placeholder="Que vas-tu faire concrètement ?"></textarea>
+          </label>
+          <label class="field"><span>Bénéficiaires</span>
+            <textarea id="s11Beneficiaires" class="text-input" rows="2" placeholder="Qui sera aidé ? Environ combien de personnes ?"></textarea>
+          </label>
+        </div>
+      </div>
+
+      <!-- S12 — Engagement et redevabilité -->
+      <div class="pdp-section" id="pdp-s12">
+        <div class="card">
+          <p class="eyebrow">S12 — Engagement et redevabilité</p>
+          <p class="settings-hint">Ce que tu t’engages à faire pendant ces 6 mois, et les personnes à qui tu rendras des comptes.</p>
+          <label class="field"><span>Mes engagements de départ</span>
+            <textarea id="s12Engagements" class="text-input" rows="4" placeholder="Ce que je m’engage à faire, concrètement, pendant ces 6 mois…"></textarea>
+          </label>
+          <label class="field"><span>Mes partenaires de redevabilité</span>
+            <textarea id="s12Partenaires" class="text-input" rows="2" placeholder="Noms et lien (conjoint, ami, responsable d’église…)"></textarea>
+          </label>
+          <label class="field"><span>Fréquence des points de redevabilité</span>
+            <select id="s12Frequence" class="text-input">
+              <option value="">— Choisir —</option>
+              <option value="hebdo">Chaque semaine</option>
+              <option value="quinzaine">Toutes les deux semaines</option>
+              <option value="mensuel">Chaque mois</option>
+            </select>
+          </label>
+          <label class="check-item" style="margin-top:12px;"><input type="checkbox" id="s12Confirme"> Je confirme ces engagements.</label>
+        </div>
+      </div>
+
+      <!-- S13 — Fruits de l'Esprit et disciplines spirituelles -->
+      <div class="pdp-section" id="pdp-s13">
+        <div class="card">
+          <p class="eyebrow">S13 — Fruits de l’Esprit et disciplines spirituelles</p>
+          <p class="settings-hint">Évaluation de départ, de 1 à 5 (1 = très peu présent, 5 = bien enraciné). Tu la referas à la fin des 6 mois pour mesurer ta croissance.</p>
+          <p class="eyebrow" style="margin-top:12px;">Les fruits de l’Esprit (Galates 5.22-23)</p>
+          <div class="module-row"><span class="module-label">Amour</span><select class="module-select" id="s13f-amour"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></div>
+          <div class="module-row"><span class="module-label">Joie</span><select class="module-select" id="s13f-joie"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></div>
+          <div class="module-row"><span class="module-label">Paix</span><select class="module-select" id="s13f-paix"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></div>
+          <div class="module-row"><span class="module-label">Patience</span><select class="module-select" id="s13f-patience"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></div>
+          <div class="module-row"><span class="module-label">Bienveillance</span><select class="module-select" id="s13f-bienveillance"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></div>
+          <div class="module-row"><span class="module-label">Bonté</span><select class="module-select" id="s13f-bonte"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></div>
+          <div class="module-row"><span class="module-label">Fidélité</span><select class="module-select" id="s13f-fidelite"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></div>
+          <div class="module-row"><span class="module-label">Douceur</span><select class="module-select" id="s13f-douceur"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></div>
+          <div class="module-row"><span class="module-label">Maîtrise de soi</span><select class="module-select" id="s13f-maitrise"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></div>
+          <p class="eyebrow" style="margin-top:16px;">Les disciplines spirituelles</p>
+          <div class="module-row"><span class="module-label">Prière</span><select class="module-select" id="s13d-priere"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></div>
+          <div class="module-row"><span class="module-label">Lecture de la Bible</span><select class="module-select" id="s13d-bible"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></div>
+          <div class="module-row"><span class="module-label">Méditation</span><select class="module-select" id="s13d-meditation"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></div>
+          <div class="module-row"><span class="module-label">Jeûne</span><select class="module-select" id="s13d-jeune"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></div>
+          <div class="module-row"><span class="module-label">Adoration</span><select class="module-select" id="s13d-adoration"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></div>
+          <div class="module-row"><span class="module-label">Communion fraternelle (vie d’église)</span><select class="module-select" id="s13d-communion"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></div>
+          <div class="module-row"><span class="module-label">Service</span><select class="module-select" id="s13d-service"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></div>
+          <div class="module-row"><span class="module-label">Partage de la foi</span><select class="module-select" id="s13d-partage"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></div>
+          <div class="module-row"><span class="module-label">Générosité</span><select class="module-select" id="s13d-generosite"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></div>
+          <div class="module-row"><span class="module-label">Silence et solitude</span><select class="module-select" id="s13d-silence"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></div>
+          <label class="field" style="margin-top:12px;"><span>Ce que je veux faire croître en priorité</span>
+            <textarea id="s13Priorite" class="text-input" rows="3" placeholder="Un ou deux fruits ou disciplines à travailler en premier…"></textarea>
           </label>
         </div>
       </div>
