@@ -54,7 +54,7 @@ jobs:
           D=public/abba-mise-en-action
           rm -rf "$D" && mkdir -p "$D"
           cd ../src
-          cp -r index.html app.js sync.js voies.js style.css sw.js manifest.json firebase-config.js logo.png icon-192.png icon-512.png ../gest/$D/
+          cp -r index.html app.js sync.js voies.js ministeres.js style.css sw.js manifest.json firebase-config.js logo.png icon-192.png icon-512.png ../gest/$D/
           cd ../gest
           git config user.name "Publication automatique"
           git config user.email "noreply@batisseursbibliques.org"

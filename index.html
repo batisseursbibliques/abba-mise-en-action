@@ -255,16 +255,8 @@ if ('serviceWorker' in navigator) {
       <div class="pdp-section" id="pdp-s5">
         <div class="card">
           <p class="eyebrow">S5 — Choix et développement du ministère</p>
-          <p class="settings-hint">Quel ministère ABBA rejoins-tu ?</p>
-          <div id="s5MinistreOptions" class="check-group">
-            <label class="check-item"><input type="radio" name="s5Ministre" value="MIPS"> MIPS — Ministère d'Intercession et de Prière Stratégique</label>
-            <label class="check-item"><input type="radio" name="s5Ministre" value="MPS"> MPS — Ministère du Perfectionnement des Saints</label>
-            <label class="check-item"><input type="radio" name="s5Ministre" value="MPO"> MPO — Ministère de Protection et d'Orientation</label>
-            <label class="check-item"><input type="radio" name="s5Ministre" value="MEA"> MEA — Ministère d'Évangélisation par les Arts</label>
-            <label class="check-item"><input type="radio" name="s5Ministre" value="MBEL"> MBEL — Ministère du Bien-être, d'Entraide et de Libéralité</label>
-            <label class="check-item"><input type="radio" name="s5Ministre" value="MAF"> MAF — Ministère des Affaires et Finances</label>
-            <label class="check-item"><input type="radio" name="s5Ministre" value="DPH"> DPH — Direction des Pêches d'Hommes</label>
-          </div>
+          <p class="settings-hint">Quel ministère ABBA rejoins-tu ? Touche « Comprendre ce ministère » pour lire ce qu'il implique et ce qu'il demande avant de t'engager.</p>
+          <div id="s5MinistreOptions" class="check-group"></div>
           <label class="field" style="margin-top:12px;"><span>Raisons de ce choix (dons, passions, appel)</span>
             <textarea id="s5Raisons" class="text-input" rows="3" placeholder="Pourquoi ce ministère te correspond…"></textarea>
           </label>
@@ -679,6 +671,7 @@ if ('serviceWorker' in navigator) {
 </div><!-- fin #app -->
 
 <script src="voies.js"></script>
+<script src="ministeres.js"></script>
 <script type="module" src="sync.js"></script>
 <script type="module" src="app.js"></script>
 </body>

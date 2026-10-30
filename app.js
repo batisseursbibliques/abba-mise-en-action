@@ -61,6 +61,7 @@ let IS_ADMIN       = false;
 let IS_MENTOR      = false;
 let MY_PDP         = {};
 let MY_RENCONTRES  = {};
+let MY_CONFIRMATIONS = {};   // confirmations du mentor (/mea_confirmations/{uid}), en lecture seule pour l'étudiant
 let ALL_USERS      = [];   // { uid, nom, prenom, email, … }
 let ALL_MENTORS    = [];   // { email, uid, nom }
 let ALL_ASSIGNMENTS = [];  // { batisseurUid, mentorEmail, mentorUid, mentorNom }
@@ -70,6 +71,7 @@ let SUIVI_DATA     = [];   // résumés chargés pour le mentor/admin
 let unsubAdmins    = null;
 let unsubPDP       = null;
 let unsubRencontres = null;
+let unsubConfirmations = null;
 let unsubMentors   = null;   // liste complète des mentors (coordinateurs seulement)
 let unsubMyRole    = null;   // ma propre fiche de mentor (tout le monde)
 let ADMIN_OUVERT   = false;  // vrai une fois l'écran Admin chargé
@@ -282,8 +284,9 @@ function traduireErreur(err) {
 
 async function onAuthChanged(user) {
   // Nettoyer les listeners
-  [unsubAdmins, unsubPDP, unsubRencontres, unsubMentors, unsubMyRole].forEach(fn => fn && fn());
-  unsubAdmins = unsubPDP = unsubRencontres = unsubMentors = unsubMyRole = null;
+  [unsubAdmins, unsubPDP, unsubRencontres, unsubConfirmations, unsubMentors, unsubMyRole].forEach(fn => fn && fn());
+  unsubAdmins = unsubPDP = unsubRencontres = unsubConfirmations = unsubMentors = unsubMyRole = null;
+  MY_CONFIRMATIONS = {};
   ALL_MENTORS = [];
 
   if (!user) {
@@ -391,6 +394,12 @@ async function onAuthChanged(user) {
     renderRencontresPanel();
     updateBilan();
   });
+  // Confirmations et demandes de correction du mentor
+  if (unsubConfirmations) unsubConfirmations();
+  unsubConfirmations = window.AbbaSync.watchMyConfirmations(user.uid, (data) => {
+    MY_CONFIRMATIONS = data || {};
+    renderRencontresPanel();
+  });
 }
 
 // Liste complète des mentors : seulement pour les coordinateurs (les règles de sécurité l'exigent aussi)
@@ -483,9 +492,8 @@ function problemeEtape(key, d) {
 
 // Outils de la formation à relire pour chaque étape
 const OUTILS_ETAPES = {
-  s2:  "Module 5 — Bâtir le Caractère : reprends tes exercices pour nourrir ta vision, tes forces et tes talents.",
+  s2:  "Modules 2, 5, 6 et 10 : reprends ces exercices pour nourrir ta vision, tes forces, tes talents et ce que tu dois faire guérir. Si tu as survolé la formation, rattrape-toi ici avant de remplir.",
   s4:  "Relis tes modules dans le Parcours avant de te noter.",
-  s5:  "Module 10 — Les Ministères de Dieu : relis-le avant de choisir ton ministère.",
   s6:  "Module 14 — Création de richesse (14.1 et 14.2) : les leçons t’aident à choisir et à construire ton projet.",
   s7:  "Module 11 — Maîtriser sa santé et son argent : le budget en 4 enveloppes t’aide pour tes objectifs financiers.",
   s10: "Module 4 — Aimer : relis-le pour préparer les relations à restaurer.",
@@ -511,6 +519,34 @@ function chargerPdpPreservantBrouillon() {
 // ─────────────────────────────────────────────────────────────
 let VOIE_AFFICHEE = null;
 const voieParId = (id) => (window.VOIES_PROJET || []).find(v => v.id === id) || null;
+
+// S5 — liste des ministères avec fiche dépliable (« Comprendre ce ministère »)
+function construireMinisteres() {
+  const zone = document.getElementById("s5MinistreOptions");
+  if (!zone) return;
+  const liste = (t, arr) => arr && arr.length ? `<h4>${t}</h4><ul>${arr.map(x => `<li>${escapeAttr(x)}</li>`).join("")}</ul>` : "";
+  zone.innerHTML = `<p class="min-intro">${escapeAttr(window.MINISTERES_INTRO || "")}</p>` + (window.MINISTERES || []).map(m => `
+    <div class="min-item">
+      <label class="check-item"><input type="radio" name="s5Ministre" value="${m.id}"> <span><strong>${m.id}</strong> — ${escapeAttr(m.nom)}</span></label>
+      <button type="button" class="lien-min" data-min="${m.id}" aria-expanded="false">Comprendre ce ministère ▾</button>
+      <div class="min-fiche" id="fiche-${m.id}" hidden>
+        <p><strong>Mission principale.</strong> ${escapeAttr(m.mission)}</p>
+        ${liste("Ce que fait ce ministère", m.resp)}
+        ${liste("Profil recherché", m.profil)}
+        ${liste("Formation requise", m.formation)}
+        ${liste("Outils et ressources", m.outils)}
+      </div>
+    </div>`).join("");
+  zone.addEventListener("click", (e) => {
+    const b = e.target.closest(".lien-min");
+    if (!b) return;
+    const f = document.getElementById("fiche-" + b.dataset.min);
+    const ouvert = f.hidden;
+    f.hidden = !ouvert;
+    b.setAttribute("aria-expanded", String(ouvert));
+    b.textContent = ouvert ? "Masquer ce ministère ▴" : "Comprendre ce ministère ▾";
+  });
+}
 
 function construireChoixVoies() {
   const zone = document.getElementById("s6VoieChoix");
@@ -664,6 +700,7 @@ function setupPdpNav() {
   });
 
   // Pieds d'étape : enregistrer / terminer / étape suivante, outils de la formation, suivi des brouillons
+  construireMinisteres();
   construireChoixVoies();
   construirePiedsEtapes();
   updatePdpProgress();
@@ -1260,60 +1297,120 @@ function renderRencontresPanel() {
   updateAccueilRencontresHint();
 }
 
+// ── Rencontres : états et libellés ───────────────────────────
+const MODES_RENCONTRE = { presentiel: "En présentiel", visio: "En visioconférence", audio: "Par appel audio" };
+// Champs du formulaire sur lesquels le mentor peut demander une correction
+const CHAMPS_CORRECTION = [
+  { key: "date",       label: "Date de la rencontre" },
+  { key: "mode",       label: "Mode et durée" },
+  { key: "themes",     label: "Thèmes abordés" },
+  { key: "notes8dim",  label: "Évaluation des 8 dimensions" },
+  { key: "victoires",  label: "Victoires et réussites" },
+  { key: "defis",      label: "Défis rencontrés", partageSeulement: true },
+  { key: "actions",    label: "Actions correctives décidées" },
+  { key: "prochaine",  label: "Date de la prochaine rencontre" },
+  { key: "ajustements", label: "Ajustements majeurs (mois 3)", mois: 3 },
+  { key: "bilanFinal", label: "Bilan final (mois 6)", mois: 6 },
+];
+function champsCorrigeables(moisNum, rencontre) {
+  return CHAMPS_CORRECTION.filter(c => (!c.mois || c.mois === moisNum) && (!c.partageSeulement || rencontre?.defisPartages));
+}
+function libelleChamp(key) { return (CHAMPS_CORRECTION.find(c => c.key === key) || {}).label || key; }
+
+// « attente » : enregistrée, le mentor n'a pas encore répondu ; « correction » : le mentor demande des corrections ;
+// « confirmee » : confirmée par le mentor. Le mentor écrit dans /mea_confirmations (jamais dans les textes de l'étudiant).
+// La version permet de savoir si l'étudiant a renvoyé la rencontre après une demande de correction.
+function versionRencontre(r) { return (r && r.version) || 1; }
+function statutRencontre(k) {
+  const r = MY_RENCONTRES[k]; if (!r || !r.verrouille) return "vide";
+  const c = MY_CONFIRMATIONS[k];
+  if (c && c.version === versionRencontre(r)) return c.statut === "confirmee" ? "confirmee" : (c.statut === "correction" ? "correction" : "attente");
+  return "attente";
+}
+function nbConfirmees() { return MOIS_KEYS.filter(k => statutRencontre(k) === "confirmee").length; }
+
 // Trouver le prochain mois non encore enregistré
 function prochainMoisDisponible() {
   return MOIS_KEYS.find(k => !MY_RENCONTRES[k]?.verrouille) || null;
 }
+// Une rencontre à corriger passe avant : l'étudiant doit d'abord répondre à son mentor
+function moisACorriger() {
+  return MOIS_KEYS.find(k => statutRencontre(k) === "correction") || null;
+}
 
 function renderRencontreForm() {
   const zone = document.getElementById("rencontreFormZone");
-  const moisKey = prochainMoisDisponible();
+  const corr = moisACorriger();
+  const moisKey = corr || prochainMoisDisponible();
 
   if (!moisKey) {
     zone.innerHTML = `<div class="rencontre-header-card">
-      <p class="eyebrow" style="color:var(--sage);">✓ Les 6 rencontres sont complétées</p>
-      <p class="settings-hint">Consulte ton bilan pour voir ta progression.</p>
+      <p class="eyebrow" style="color:var(--sage);">✓ Les 6 rencontres sont enregistrées</p>
+      <p class="settings-hint">${nbConfirmees()} / 6 confirmées par ton mentor. Consulte ton bilan pour voir ta progression.</p>
     </div>`;
     return;
   }
 
   const moisNum = MOIS_KEYS.indexOf(moisKey) + 1;
+  const pre = corr ? (MY_RENCONTRES[moisKey] || {}) : {};
+  const demandes = corr ? (MY_CONFIRMATIONS[moisKey]?.demandes || []) : [];
 
   zone.innerHTML = `
     <div class="rencontre-header">
       <h2>Rencontre — ${MOIS_LABELS[moisNum - 1]}</h2>
-      <p>${moisNum === 3 ? "Bilan mi-parcours inclus" : moisNum === 6 ? "Évaluation finale" : "Suivi mensuel"}</p>
+      <p>${moisNum === 3 ? "Bilan mi-parcours inclus" : moisNum === 6 ? "Bilan final" : "Suivi mensuel"}</p>
     </div>
 
-    <label class="field"><span>Date de la rencontre</span>
+    ${corr ? `<div class="corr-box">
+      <p class="eyebrow" style="color:var(--brick);">✎ Ton mentor demande des corrections</p>
+      <ul>${demandes.map(d => `<li><strong>${escapeAttr(d.libelle || libelleChamp(d.champ))}</strong> : ${escapeAttr(d.message)}</li>`).join("")}</ul>
+      <p class="settings-hint">Corrige les champs signalés, puis renvoie la rencontre. Ton mentor la relira avant de la confirmer.</p>
+    </div>` : ""}
+
+    <label class="field" data-champ="date"><span>Date de la rencontre</span>
       <input type="date" class="text-input" id="r-date">
     </label>
 
-    <label class="field"><span>Thèmes abordés</span>
+    <div class="field" data-champ="mode"><span>Comment s'est passée la rencontre ?</span>
+      <select class="text-input" id="r-mode">
+        <option value="">— Choisis —</option>
+        ${Object.entries(MODES_RENCONTRE).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}
+      </select>
+      <input type="number" class="text-input" id="r-duree" min="5" max="600" step="5" placeholder="Durée en minutes" style="margin-top:6px;">
+      ${(moisNum === 1 || moisNum === 6) ? `
+        <p class="settings-hint" style="margin-top:6px;">Le présentiel est conseillé pour le mois ${moisNum}.</p>
+        <label class="check-item" id="r-coord-wrap" style="display:none;margin-top:4px;">
+          <input type="checkbox" id="r-coordAccord"> <span>Mon coordinateur est d'accord pour que cette rencontre n'ait pas lieu en présentiel.</span>
+        </label>` : ""}
+    </div>
+
+    <label class="field" data-champ="themes"><span>Thèmes abordés</span>
       <textarea class="text-input" rows="2" id="r-themes"
         placeholder="Points discutés lors de cette rencontre…"></textarea>
     </label>
 
-    <p class="eyebrow" style="margin-top:4px;">Évaluation des 8 dimensions (1–5)</p>
-    <div class="dim-grid">
-      ${DIMENSIONS.map(dim => `
-        <div class="dim-item">
-          <span class="dim-label">${dim.icone} ${dim.label}</span>
-          <div class="dim-score">
-            <input type="range" min="1" max="5" value="3"
-              id="r-dim-${dim.key}" oninput="updateRDim('${dim.key}')">
-            <span class="dim-score-val" id="r-dim-val-${dim.key}">3</span>
+    <div data-champ="notes8dim">
+      <p class="eyebrow" style="margin-top:4px;">Évaluation des 8 dimensions (1–5)</p>
+      <div class="dim-grid">
+        ${DIMENSIONS.map(dim => `
+          <div class="dim-item">
+            <span class="dim-label">${dim.icone} ${dim.label}</span>
+            <div class="dim-score">
+              <input type="range" min="1" max="5" value="3"
+                id="r-dim-${dim.key}" oninput="updateRDim('${dim.key}')">
+              <span class="dim-score-val" id="r-dim-val-${dim.key}">3</span>
+            </div>
           </div>
-        </div>
-      `).join("")}
+        `).join("")}
+      </div>
     </div>
 
-    <label class="field" style="margin-top:12px;"><span>Victoires et réussites du mois</span>
+    <label class="field" data-champ="victoires" style="margin-top:12px;"><span>Victoires et réussites du mois</span>
       <textarea class="text-input" rows="3" id="r-victoires"
         placeholder="Ce qui a bien marché ce mois-ci…"></textarea>
     </label>
 
-    <label class="field"><span>Défis rencontrés</span>
+    <label class="field" data-champ="defis"><span>Défis rencontrés</span>
       <textarea class="text-input" rows="3" id="r-defis"
         placeholder="Difficultés rencontrées…"></textarea>
     </label>
@@ -1323,22 +1420,30 @@ function renderRencontreForm() {
       <span class="partage-toggle-label">Partager ces défis avec mon mentor</span>
     </div>
 
-    <label class="field" style="margin-top:12px;"><span>Actions correctives décidées</span>
+    <label class="field" data-champ="actions" style="margin-top:12px;"><span>Actions correctives décidées</span>
       <textarea class="text-input" rows="3" id="r-actions"
         placeholder="Ce que tu vas faire différemment le mois prochain…"></textarea>
     </label>
 
     ${moisNum === 3 ? `
-      <label class="field"><span>Ajustements majeurs mi-parcours</span>
+      <label class="field" data-champ="ajustements"><span>Ajustements majeurs mi-parcours</span>
         <textarea class="text-input" rows="3" id="r-ajustements"
           placeholder="Points à recadrer pour la seconde moitié…"></textarea>
-      </label>
-    ` : ""}
+      </label>` : ""}
+
+    ${moisNum === 6 ? `
+      <label class="field" data-champ="bilanFinal"><span>Bilan final de ces 6 mois</span>
+        <textarea class="text-input" rows="4" id="r-bilanFinal"
+          placeholder="Ce que ces 6 mois ont changé, ce qui reste à construire…"></textarea>
+      </label>` : `
+      <label class="field" data-champ="prochaine"><span>Date de la prochaine rencontre (fixée avec ton mentor)</span>
+        <input type="date" class="text-input" id="r-prochaine">
+      </label>`}
 
     <button class="btn-primary" id="r-save-btn" type="button" style="margin-top:8px;width:100%;"
-      onclick="saveRencontre('${moisKey}')">Enregistrer et verrouiller</button>
+      onclick="saveRencontre('${moisKey}')">${corr ? "Renvoyer à mon mentor" : "Enregistrer et envoyer au mentor"}</button>
     <p class="settings-hint" style="margin-top:6px;text-align:center;">
-      ⚠ Une fois enregistré, ce mois ne pourra plus être modifié.
+      ⚠ Une fois envoyée, la rencontre ne peut plus être modifiée, sauf si ton mentor te demande une correction.
     </p>
     <p class="auth-error" id="r-error"></p>
   `;
@@ -1346,10 +1451,40 @@ function renderRencontreForm() {
   document.getElementById("r-partage-toggle").addEventListener("click", () => {
     const cb = document.getElementById("r-defisPartages");
     cb.checked = !cb.checked;
-    document.getElementById("r-partage-toggle").classList.toggle("actif", cb.checked);
-    document.querySelector("#r-partage-toggle .partage-toggle-label").textContent =
-      cb.checked ? "✓ Défis partagés avec le mentor" : "Partager ces défis avec mon mentor";
+    majToggleDefis();
   });
+  const majCoord = () => {
+    const w = document.getElementById("r-coord-wrap"); if (!w) return;
+    const m = document.getElementById("r-mode").value;
+    w.style.display = (m && m !== "presentiel") ? "" : "none";
+  };
+  document.getElementById("r-mode").addEventListener("change", majCoord);
+
+  // Préremplissage (rencontre à corriger) + repérage des champs signalés
+  if (corr) {
+    const v = (id, x) => { const el = document.getElementById(id); if (el && x != null) el.value = x; };
+    v("r-date", pre.date); v("r-mode", pre.mode); v("r-duree", pre.duree); v("r-themes", pre.themes);
+    v("r-victoires", pre.victoires); v("r-defis", pre.defis); v("r-actions", pre.actionsCorrectves);
+    v("r-ajustements", pre.ajustementsMiParcours); v("r-bilanFinal", pre.bilanFinal); v("r-prochaine", pre.prochaineDate);
+    DIMENSIONS.forEach(dim => { const n = pre.notes8dim?.[dim.key]; if (n) { v("r-dim-" + dim.key, n); updateRDim(dim.key); } });
+    const cb = document.getElementById("r-defisPartages"); if (cb) cb.checked = !!pre.defisPartages;
+    const cc = document.getElementById("r-coordAccord"); if (cc) cc.checked = !!pre.coordAccord;
+    majToggleDefis(); majCoord();
+    demandes.forEach(d => {
+      const bloc = zone.querySelector(`[data-champ="${d.champ}"]`);
+      if (!bloc) return;
+      bloc.classList.add("champ-corr");
+      bloc.insertAdjacentHTML("beforeend", `<p class="champ-corr-msg">✎ Ton mentor : ${escapeAttr(d.message)}</p>`);
+    });
+  }
+}
+function majToggleDefis() {
+  const cb = document.getElementById("r-defisPartages");
+  const t = document.getElementById("r-partage-toggle");
+  if (!cb || !t) return;
+  t.classList.toggle("actif", cb.checked);
+  t.querySelector(".partage-toggle-label").textContent =
+    cb.checked ? "✓ Défis partagés avec le mentor" : "Partager ces défis avec mon mentor";
 }
 
 function renderRencontreHistorique() {
@@ -1357,25 +1492,37 @@ function renderRencontreHistorique() {
   const done = MOIS_KEYS.filter(k => MY_RENCONTRES[k]?.verrouille);
   if (!done.length) { zone.innerHTML = ""; return; }
 
+  const BADGES = {
+    confirmee:  `<span class="badge-statut ok">✓ confirmée par ton mentor</span>`,
+    attente:    `<span class="badge-statut att">⏳ en attente de ton mentor</span>`,
+    correction: `<span class="badge-statut corr">✎ correction demandée</span>`,
+  };
   zone.innerHTML = done.map(k => {
     const d = MY_RENCONTRES[k];
     const moisNum = MOIS_KEYS.indexOf(k) + 1;
+    const st = statutRencontre(k);
     const dimsHtml = DIMENSIONS.map(dim => {
       const val = d.notes8dim?.[dim.key] ? n5(d.notes8dim[dim.key]) : "—";
       return `<span class="histo-dim">${dim.icone} <strong>${val}</strong><small>${dim.label.substring(0,5)}</small></span>`;
     }).join("");
+    const modeTxt = d.mode ? `${MODES_RENCONTRE[d.mode] || ""}${d.duree ? " · " + escapeAttr(d.duree) + " min" : ""}` : "";
     return `
       <div class="histo-card">
         <div class="histo-head">
           <span class="histo-label">${MOIS_LABELS[moisNum-1]}</span>
-          <span class="histo-date">${d.date || ""}</span>
+          <span class="histo-date">${escapeAttr(d.date || "")}</span>
           <span class="histo-lock">🔒</span>
         </div>
-        ${d.themes ? `<p class="histo-line" style="font-style:italic;color:var(--ink-soft);margin-bottom:8px;">📝 ${d.themes}</p>` : ""}
+        <p class="histo-line">${BADGES[st] || ""}</p>
+        ${modeTxt ? `<p class="histo-line">📍 ${modeTxt}</p>` : ""}
+        ${d.themes ? `<p class="histo-line" style="font-style:italic;color:var(--ink-soft);margin-bottom:8px;">📝 ${escapeAttr(d.themes)}</p>` : ""}
         <div class="histo-dims">${dimsHtml}</div>
-        ${d.victoires ? `<p class="histo-line histo-victoire">✓ ${d.victoires}</p>` : ""}
-        ${d.defis ? `<p class="histo-line histo-defi">⚠ ${d.defisPartages ? d.defis : "(défis non partagés)"}</p>` : ""}
-        ${d.actionsCorrectves ? `<p class="histo-line">→ ${d.actionsCorrectves}</p>` : ""}
+        ${d.victoires ? `<p class="histo-line histo-victoire">✓ ${escapeAttr(d.victoires)}</p>` : ""}
+        ${d.defis ? `<p class="histo-line histo-defi">⚠ ${d.defisPartages ? escapeAttr(d.defis) : "(défis non partagés)"}</p>` : ""}
+        ${d.actionsCorrectves ? `<p class="histo-line">→ ${escapeAttr(d.actionsCorrectves)}</p>` : ""}
+        ${d.ajustementsMiParcours ? `<p class="histo-line">🔧 ${escapeAttr(d.ajustementsMiParcours)}</p>` : ""}
+        ${d.bilanFinal ? `<p class="histo-line">🏁 ${escapeAttr(d.bilanFinal)}</p>` : ""}
+        ${d.prochaineDate ? `<p class="histo-line">📅 Prochaine rencontre : ${escapeAttr(d.prochaineDate)}</p>` : ""}
       </div>`;
   }).join("");
 }
@@ -1388,14 +1535,25 @@ window.updateRDim = function(key) {
 window.saveRencontre = async function(moisKey) {
   if (!CURRENT_USER || !moisKey) return;
   const btn = document.getElementById("r-save-btn");
-  const dateVal = document.getElementById("r-date")?.value || "";
-  if (!dateVal) {
-    document.getElementById("r-error").textContent = "La date est obligatoire.";
+  const err = document.getElementById("r-error");
+  const moisNum = MOIS_KEYS.indexOf(moisKey) + 1;
+  const val = (id) => document.getElementById(id)?.value || "";
+  const dateVal = val("r-date");
+  if (!dateVal) { err.textContent = "La date est obligatoire."; return; }
+  const mode = val("r-mode");
+  if (!mode) { err.textContent = "Dis comment la rencontre s'est passée (présentiel, visioconférence ou audio)."; return; }
+  const duree = parseInt(val("r-duree")) || 0;
+  if (!duree) { err.textContent = "Indique la durée de la rencontre, en minutes."; return; }
+  const coordAccord = document.getElementById("r-coordAccord")?.checked || false;
+  if ((moisNum === 1 || moisNum === 6) && mode !== "presentiel" && !coordAccord) {
+    err.textContent = "Aux mois 1 et 6, la rencontre doit être en présentiel. Sinon, coche que ton coordinateur est d'accord.";
     return;
   }
-  btn.textContent = "Enregistrement…"; btn.disabled = true;
+  const prochaine = val("r-prochaine");
+  if (moisNum < 6 && !prochaine) { err.textContent = "Fixe avec ton mentor la date de la prochaine rencontre."; return; }
+  err.textContent = "";
+  btn.textContent = "Envoi…"; btn.disabled = true;
 
-  const moisNum = MOIS_KEYS.indexOf(moisKey) + 1;
   const notes8dim = {};
   DIMENSIONS.forEach(dim => {
     notes8dim[dim.key] = parseInt(document.getElementById("r-dim-" + dim.key)?.value) || 3;
@@ -1404,36 +1562,42 @@ window.saveRencontre = async function(moisKey) {
 
   const data = {
     date:             dateVal,
-    themes:           document.getElementById("r-themes")?.value || "",
+    mode, duree, coordAccord,
+    themes:           val("r-themes"),
     notes8dim,
-    victoires:        document.getElementById("r-victoires")?.value || "",
-    defis:            document.getElementById("r-defis")?.value || "",
+    victoires:        val("r-victoires"),
+    defis:            val("r-defis"),
     defisPartages,
-    actionsCorrectves: document.getElementById("r-actions")?.value || "",
+    actionsCorrectves: val("r-actions"),
     verrouille:       true,   // ← clé du verrouillage
     verrouilleAt:     new Date().toISOString(),
+    version:          versionRencontre(MY_RENCONTRES[moisKey]) + (MY_RENCONTRES[moisKey]?.verrouille ? 1 : 0),
   };
-  if (moisNum === 3) {
-    data.ajustementsMiParcours = document.getElementById("r-ajustements")?.value || "";
-  }
+  if (moisNum < 6) data.prochaineDate = prochaine;
+  if (moisNum === 3) data.ajustementsMiParcours = val("r-ajustements");
+  if (moisNum === 6) data.bilanFinal = val("r-bilanFinal");
 
   try {
     await window.AbbaSync.saveRencontre(CURRENT_USER.uid, moisKey, data);
+    MY_RENCONTRES = { ...MY_RENCONTRES, [moisKey]: { ...(MY_RENCONTRES[moisKey] || {}), ...data } };
     await pushSummary();
     renderRencontresPanel();
-  } catch (err) {
-    console.error(err);
-    document.getElementById("r-error").textContent = "Erreur — réessaie.";
-    btn.textContent = "Enregistrer et verrouiller"; btn.disabled = false;
+  } catch (e) {
+    console.error(e);
+    err.textContent = "Erreur — réessaie.";
+    btn.textContent = "Enregistrer et envoyer au mentor"; btn.disabled = false;
   }
 };
 
 function updateAccueilRencontresHint() {
   const hint = document.getElementById("accueilRencontresHint");
-  const done = MOIS_KEYS.filter(k => MY_RENCONTRES[k]?.verrouille).length;
-  if (done === 0) hint.textContent = "Tes 6 rencontres de suivi avec ton mentor.";
-  else if (done < 6) hint.textContent = `${done} / 6 rencontres complétées.`;
-  else hint.textContent = "✓ Les 6 rencontres sont complétées — consulte ton bilan !";
+  const faites = MOIS_KEYS.filter(k => MY_RENCONTRES[k]?.verrouille).length;
+  const conf = nbConfirmees();
+  const aCorriger = MOIS_KEYS.filter(k => statutRencontre(k) === "correction").length;
+  if (aCorriger) hint.textContent = `✎ Ton mentor demande une correction sur ${aCorriger} rencontre${aCorriger > 1 ? "s" : ""}.`;
+  else if (faites === 0) hint.textContent = "Tes 6 rencontres de suivi avec ton mentor.";
+  else if (conf < 6) hint.textContent = `${conf} / 6 rencontres confirmées par ton mentor (${faites} enregistrée${faites > 1 ? "s" : ""}).`;
+  else hint.textContent = "✓ Les 6 rencontres sont confirmées — consulte ton bilan !";
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1565,6 +1729,8 @@ async function pushSummary(extra) {
     dernieresVictoires: derniereRencontre?.victoires || "",
     derniersDefis:      derniereRencontre?.defisPartages ? (derniereRencontre?.defis || "") : null,
     prochaineRencontre: prochainMois || "bilan",
+    prochaineRencontreLe: derniereRencontre?.prochaineDate || "",
+    rencontresEnregistrees: moisDone,
     pdpComplet:    prog.atteint,
     pdpPct:        prog.pct,
     pdpEtapes:     prog.terminees,
@@ -1627,12 +1793,124 @@ async function loadSuivi() {
         </div>
         <button class="btn-secondary" style="font-size:12px;padding:7px 12px;margin-top:10px;width:100%;"
           onclick="showPdpMentor('${s.uid}')">📋 Voir le PDP</button>
+        <button class="btn-secondary" style="font-size:12px;padding:7px 12px;margin-top:8px;width:100%;"
+          onclick="showRencontresMentor('${s.uid}')">🗓 Voir et confirmer les rencontres<span id="pend-${s.uid}"></span></button>
       </div>
     </div>`;
   }).join("")}</div>`;
 
   document.getElementById("refreshSuiviBtn").onclick = loadSuivi;
+  marquerRencontresAConfirmer(data);
 }
+
+// Le mentor voit, sur chaque carte, combien de rencontres attendent sa confirmation (seulement ses bâtisseurs)
+async function marquerRencontresAConfirmer(data) {
+  if (!IS_MENTOR || !CURRENT_USER) return;
+  const moi = String(CURRENT_USER.email || "").toLowerCase();
+  await Promise.all(data.filter(s => String(s.mentorEmail || "").toLowerCase() === moi).map(async (s) => {
+    try {
+      const [r, c] = await Promise.all([window.AbbaSync.getRencontresOf(s.uid), window.AbbaSync.getConfirmations(s.uid)]);
+      const n = MOIS_KEYS.filter(k => r[k]?.verrouille && !(c[k] && c[k].version === versionRencontre(r[k]))).length;
+      const el = document.getElementById("pend-" + s.uid);
+      if (el && n) el.textContent = ` — ${n} à confirmer`;
+    } catch (e) { /* lecture refusée : on n'affiche rien */ }
+  }));
+}
+
+// Rencontres d'un bâtisseur, vues par son mentor : lecture seule + confirmer / demander une correction
+window.showRencontresMentor = async function(uid) {
+  const s = SUIVI_DATA.find(x => x.uid === uid) || {};
+  const nom = `${s.prenom || ""} ${s.nom || ""}`.trim() || s.email || uid;
+  const estSonMentor = !!CURRENT_USER && String(s.mentorEmail || "").toLowerCase() === String(CURRENT_USER.email || "").toLowerCase();
+  let r, c;
+  try { [r, c] = await Promise.all([window.AbbaSync.getRencontresOf(uid), window.AbbaSync.getConfirmations(uid)]); }
+  catch (e) { console.error(e); alert("Impossible de lire les rencontres."); return; }
+
+  const cartes = MOIS_KEYS.map((k, i) => {
+    const d = r[k]; if (!d || !d.verrouille) return "";
+    const v = versionRencontre(d);
+    const conf = c[k] && c[k].version === v ? c[k] : null;
+    const st = conf ? conf.statut : "attente";
+    const dims = DIMENSIONS.map(dim => `${dim.icone} ${d.notes8dim?.[dim.key] ? n5(d.notes8dim[dim.key]) : "—"}`).join(" · ");
+    const badge = st === "confirmee" ? `<span class="badge-statut ok">✓ confirmée</span>`
+      : st === "correction" ? `<span class="badge-statut corr">✎ correction demandée — en attente de l'étudiant</span>`
+      : `<span class="badge-statut att">⏳ à confirmer</span>`;
+    const ligne = (t, x) => x ? `<div class="pdp-mentor-row"><dt>${t}</dt><dd>${escapeAttr(x)}</dd></div>` : "";
+    return `<div class="pdp-mentor-section" id="renc-${k}">
+      <h3>${MOIS_LABELS[i]} — ${escapeAttr(d.date || "")} ${badge}</h3>
+      ${ligne("Mode", d.mode ? (MODES_RENCONTRE[d.mode] || "") + (d.duree ? " · " + d.duree + " min" : "") + (d.coordAccord ? " (accord du coordinateur)" : "") : "")}
+      ${ligne("Thèmes", d.themes)}
+      <div class="pdp-mentor-row"><dt>8 dimensions</dt><dd>${dims}</dd></div>
+      ${ligne("Victoires", d.victoires)}
+      ${d.defisPartages ? ligne("Défis (partagés)", d.defis) : ligne("Défis", "(non partagés)")}
+      ${ligne("Actions correctives", d.actionsCorrectves)}
+      ${ligne("Ajustements mi-parcours", d.ajustementsMiParcours)}
+      ${ligne("Bilan final", d.bilanFinal)}
+      ${ligne("Prochaine rencontre", d.prochaineDate)}
+      ${st === "correction" ? `<p class="settings-hint">Demandes envoyées : ${(conf.demandes || []).map(x => escapeAttr((x.libelle || libelleChamp(x.champ)) + " — " + x.message)).join(" ; ")}</p>` : ""}
+      ${(estSonMentor && st === "attente") ? `<div class="renc-actions">
+          <button class="btn-primary" style="font-size:13px;padding:8px 12px;" onclick="confirmerRencontre('${uid}','${k}')">✓ Confirmer cette rencontre</button>
+          <button class="btn-secondary" style="font-size:13px;padding:8px 12px;" onclick="ouvrirCorrection('${uid}','${k}')">✎ Besoin de correction</button>
+        </div><div id="corr-${k}"></div>` : ""}
+    </div>`;
+  }).join("");
+
+  document.getElementById("rencMentorOverlay")?.remove();
+  document.body.insertAdjacentHTML("beforeend", `
+  <div class="pdp-mentor-overlay" id="rencMentorOverlay" onclick="if(event.target.id==='rencMentorOverlay')this.remove()">
+    <div class="pdp-mentor-box">
+      <button class="pdp-mentor-close" onclick="document.getElementById('rencMentorOverlay').remove()">×</button>
+      <h2 style="font-family:var(--font-display);color:var(--navy);margin:0 0 6px;">Rencontres — ${escapeAttr(nom)}</h2>
+      <p style="font-size:12px;color:var(--ink-soft);margin:0 0 16px;">Tu confirmes ce que l'étudiant a écrit, ou tu lui demandes de le corriger. Tu ne peux jamais modifier son texte.</p>
+      ${cartes || "<p class='settings-hint'>Aucune rencontre enregistrée pour le moment.</p>"}
+      ${estSonMentor ? "" : "<p class='settings-hint'>Seul le mentor affecté peut confirmer ou demander une correction.</p>"}
+      <button class="btn-secondary" style="width:100%;margin-top:8px;" onclick="document.getElementById('rencMentorOverlay').remove()">Fermer</button>
+    </div>
+  </div>`);
+  window.__rencCache = { uid, r };
+};
+
+window.confirmerRencontre = async function(uid, k) {
+  const d = window.__rencCache?.r?.[k]; if (!d) return;
+  try {
+    await window.AbbaSync.saveConfirmation(uid, k, { statut: "confirmee", version: versionRencontre(d), par: CURRENT_USER.email });
+    await window.showRencontresMentor(uid);
+    marquerRencontresAConfirmer(SUIVI_DATA);
+  } catch (e) { console.error(e); alert("Échec de la confirmation. Réessaie."); }
+};
+
+// Formulaire de correction : une ou plusieurs lignes « champ concerné + ce qu'il faut corriger »
+window.ouvrirCorrection = function(uid, k) {
+  const d = window.__rencCache?.r?.[k]; if (!d) return;
+  const champs = champsCorrigeables(MOIS_KEYS.indexOf(k) + 1, d);
+  const zone = document.getElementById("corr-" + k);
+  window.__rencChamps = champs;
+  zone.innerHTML = `<div class="corr-form" id="corrform-${k}"></div>
+    <button class="btn-secondary" style="font-size:12px;padding:6px 10px;margin-top:6px;" onclick="ajouterLigneCorrection('${k}')">+ Ajouter un autre point</button>
+    <button class="btn-primary" style="font-size:13px;padding:8px 12px;margin-top:6px;width:100%;" onclick="envoyerCorrection('${uid}','${k}')">Envoyer la demande à l'étudiant</button>
+    <p class="auth-error" id="corrErr-${k}"></p>`;
+  ajouterLigneCorrection(k);
+};
+window.ajouterLigneCorrection = function(k) {
+  const champs = window.__rencChamps || [];
+  document.getElementById("corrform-" + k).insertAdjacentHTML("beforeend", `<div class="corr-ligne">
+    <select class="text-input corr-champ">${champs.map(c => `<option value="${c.key}">${escapeAttr(c.label)}</option>`).join("")}</select>
+    <textarea class="text-input corr-msg" rows="2" placeholder="Qu'est-ce qui doit être corrigé ?"></textarea>
+  </div>`);
+};
+window.envoyerCorrection = async function(uid, k) {
+  const d = window.__rencCache?.r?.[k]; if (!d) return;
+  const lignes = [...document.querySelectorAll(`#corrform-${k} .corr-ligne`)].map(l => {
+    const champ = l.querySelector(".corr-champ").value;
+    return { champ, libelle: libelleChamp(champ), message: l.querySelector(".corr-msg").value.trim() };
+  }).filter(x => x.message);
+  if (!lignes.length) { document.getElementById("corrErr-" + k).textContent = "Écris au moins un point à corriger."; return; }
+  try {
+    await window.AbbaSync.saveConfirmation(uid, k, { statut: "correction", version: versionRencontre(d), demandes: lignes, par: CURRENT_USER.email });
+    await window.showRencontresMentor(uid);
+    marquerRencontresAConfirmer(SUIVI_DATA);
+  } catch (e) { console.error(e); alert("Échec de l'envoi. Réessaie."); }
+};
 
 window.toggleSuivi = function(uid) {
   const body  = document.getElementById("body-" + uid);

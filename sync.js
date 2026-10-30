@@ -207,6 +207,28 @@ async function saveRencontre(uid, moisKey, data) {
 }
 
 // ============================================================
+// CONFIRMATIONS DU MENTOR
+// /mea_confirmations/{batisseurUid} — { mois1: { statut: "confirmee" | "correction", version, demandes: [{champ, libelle, message}], par, at }, ... }
+// Écrit UNIQUEMENT par le mentor affecté (règles Firestore) : il ne touche jamais aux textes de l'étudiant.
+// « version » = version de la rencontre examinée ; si l'étudiant renvoie la rencontre, sa version augmente et la confirmation ne vaut plus.
+// ============================================================
+function watchMyConfirmations(uid, callback) {
+  return onSnapshot(doc(db, "mea_confirmations", uid), (snap) => callback(snap.exists() ? snap.data() : {}),
+    (err) => { console.error("watch mea_confirmations:", err); callback({}); });
+}
+async function getConfirmations(uid) {
+  const snap = await getDoc(doc(db, "mea_confirmations", uid));
+  return snap.exists() ? snap.data() : {};
+}
+async function getRencontresOf(uid) {
+  const snap = await getDoc(privRef(uid, "mea_rencontres"));
+  return snap.exists() ? snap.data() : {};
+}
+async function saveConfirmation(uid, moisKey, data) {
+  await setDoc(doc(db, "mea_confirmations", uid), { [moisKey]: { ...data, at: new Date().toISOString() } }, { merge: true });
+}
+
+// ============================================================
 // RÉSUMÉS — vue allégée pour mentor et admin
 // /mea_summaries/{batisseurUid}
 // {
@@ -409,6 +431,7 @@ window.AbbaSync = {
   getMyAssignment, loadAllAssignments,
   watchMyPDP, saveMyPDP,
   watchMyRencontres, saveRencontre,
+  watchMyConfirmations, getConfirmations, getRencontresOf, saveConfirmation,
   saveSummary, loadAllSummaries, loadMySummaries,
   watchMyPDPOnce: readPDPOnce,
   loadAllUsers,

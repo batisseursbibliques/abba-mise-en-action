@@ -544,3 +544,32 @@ textarea.text-input{resize:vertical;min-height:60px;}
 .pdp-step-status.terminee{color:var(--sage);}
 .pdp-step-status.commencee{color:var(--gold);}
 .pdp-outil{margin:0 0 12px;font-size:13px;color:var(--ink-soft);background:var(--paper);border-radius:6px;padding:8px 10px;}
+
+/* ===== S5 — fiches des ministères ===== */
+.min-intro{font-size:12px;color:var(--ink-soft);margin:0 0 8px;}
+.min-item{border-bottom:1px dashed var(--line);padding-bottom:8px;}
+.lien-min{background:none;border:0;padding:4px 0 0 28px;font:inherit;font-size:13px;color:#1a5fb4;text-decoration:underline;cursor:pointer;text-align:left;}
+.min-fiche{margin:8px 0 0 28px;padding:10px 12px;background:var(--paper);border-radius:8px;font-size:13px;line-height:1.5;}
+.min-fiche h4{margin:10px 0 4px;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--navy);}
+.min-fiche ul{margin:0;padding-left:18px;}
+.min-fiche p{margin:0;}
+
+/* ===== Rencontre : plus aucun débordement ===== */
+#rencontreFormZone,#rencontreHistorique{max-width:100%;overflow-x:hidden;}
+.dim-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+.dim-item{min-width:0;}
+.dim-score input[type="range"]{min-width:0;width:100%;}
+.dim-label{min-width:0;overflow-wrap:anywhere;}
+@media (max-width:420px){.dim-grid{grid-template-columns:minmax(0,1fr);}}
+
+/* ===== Rencontres : statuts, corrections du mentor ===== */
+.badge-statut{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;margin-left:6px;}
+.badge-statut.ok{background:#e3f1e5;color:#2d6a3a;}
+.badge-statut.att{background:#fff2d6;color:#8a6410;}
+.badge-statut.corr{background:#fbe3df;color:#9b2f22;}
+.corr-box{background:#fbe3df;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13px;}
+.corr-box ul{margin:6px 0;padding-left:18px;}
+.champ-corr{border-left:3px solid var(--brick);padding-left:8px;}
+.champ-corr-msg{font-size:12px;color:var(--brick);margin:4px 0 0;}
+.renc-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+.corr-ligne{display:flex;flex-direction:column;gap:6px;margin-top:8px;padding:8px;background:var(--paper);border-radius:8px;}
