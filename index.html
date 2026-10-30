@@ -533,6 +533,13 @@ if ('serviceWorker' in navigator) {
 
       <!-- Historique des mois verrouillés -->
       <div id="rencontreHistorique"></div>
+
+      <!-- Grille hebdomadaire (annexe B) -->
+      <details class="card" id="grilleCard" style="margin-top:16px;">
+        <summary style="cursor:pointer;font-weight:600;">📅 Ma grille hebdomadaire (26 semaines)</summary>
+        <p class="settings-hint" style="margin-top:8px;">Chaque jour, coche les pratiques tenues. En fin de semaine, note ta semaine, écris une victoire et un défi.</p>
+        <div id="grilleZone"></div>
+      </details>
     </section>
 
     <!-- ================= BILAN ================= -->
@@ -582,6 +589,21 @@ if ('serviceWorker' in navigator) {
       </div>
 
       <!-- Gestion des mentors -->
+      <div class="card">
+        <p class="eyebrow">Limite de bâtisseurs par mentor</p>
+        <p class="settings-hint">Nombre maximum de bâtisseurs qu'un mentor peut suivre (de 1 à 20). Le serveur refuse toute affectation au-delà. Tu pourras la baisser avec le temps.</p>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="number" id="adminLimite" class="text-input" min="1" max="20" style="max-width:100px;">
+          <button class="btn-primary" id="saveLimiteBtn" type="button">Enregistrer</button>
+        </div>
+        <p class="settings-hint" id="limiteMsg"></p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">🔴 Sans rencontre depuis deux mois</p>
+        <div id="alertesRencontres"><p class="settings-hint">Chargement…</p></div>
+      </div>
+
       <div class="card">
         <p class="eyebrow">Mentors actifs</p>
         <p class="settings-hint">Les mentors peuvent voir les Bâtisseurs qui leur sont assignés.</p>

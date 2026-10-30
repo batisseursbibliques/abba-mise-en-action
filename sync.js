@@ -84,34 +84,81 @@ async function removeMentor(email) {
 // /mea_assignments/{batisseurUid} — { mentorEmail, mentorUid, mentorNom, assignedBy, assignedAt }
 // Écrit par admin, lu par mentor (pour ses bâtisseurs) et par le bâtisseur lui-même.
 // ============================================================
+// Limite de bâtisseurs par mentor : réglée par le coordinateur (maximum 20, garanti par les règles de sécurité)
+async function getLimiteMentors() {
+  try { const sn = await getDoc(doc(db, "mea_config", "limites")); return sn.exists() ? (sn.data().maxParMentor || 20) : 20; }
+  catch (e) { return 20; }
+}
+async function setLimiteMentors(n, byEmail) {
+  await setDoc(doc(db, "mea_config", "limites"), { maxParMentor: n, par: byEmail, updatedAt: serverTimestamp() });
+}
+// Remet les compteurs d'accord avec les affectations réelles (le serveur compare ensuite n -> n+1). Renvoie { email: nombre }.
+async function recalculerCharges() {
+  const as = await loadAllAssignments();
+  const cnt = {};
+  as.forEach(a => { if (a.mentorEmail) cnt[a.mentorEmail] = (cnt[a.mentorEmail] || 0) + 1; });
+  const snap = await getDocs(collection(db, "mea_charges"));
+  const exist = {}; snap.docs.forEach(d => { exist[d.id] = d.data().count || 0; });
+  for (const e of new Set([...Object.keys(cnt), ...Object.keys(exist)])) {
+    const n = cnt[e] || 0;
+    if (exist[e] !== n) {
+      try { await setDoc(doc(db, "mea_charges", e), { count: n, updatedAt: serverTimestamp() }); }
+      catch (err) { console.warn("compteur non mis à jour pour", e, err.message); }
+    }
+  }
+  return cnt;
+}
 async function assignMentor(batisseurUid, mentorEmail, mentorUid, mentorNom, byEmail) {
   const key = mentorEmail.trim().toLowerCase();
-  // Écrire l'assignment
-  await setDoc(doc(db, "mea_assignments", batisseurUid), {
-    mentorEmail: key,
-    mentorUid,
-    mentorNom,
-    assignedBy: byEmail,
-    assignedAt: serverTimestamp(),
+  const [limite, cnt, ancien] = await Promise.all([getLimiteMentors(), recalculerCharges(), getMyAssignment(batisseurUid)]);
+  const ancienEmail = ancien?.mentorEmail || "";
+  if (ancienEmail === key) return;
+  if ((cnt[key] || 0) >= limite) throw new Error(`Ce mentor suit déjà ${cnt[key] || 0} bâtisseurs (limite : ${limite}).`);
+  // Tout part dans UN SEUL envoi : l'affectation, les compteurs, le résumé et l'historique.
+  // Les règles de sécurité vérifient que le compteur du mentor passe bien de n à n+1 sans dépasser la limite.
+  const lot = writeBatch(db);
+  lot.set(doc(db, "mea_charges", key), { count: (cnt[key] || 0) + 1, updatedAt: serverTimestamp() });
+  if (ancienEmail) lot.set(doc(db, "mea_charges", ancienEmail), { count: Math.max(0, (cnt[ancienEmail] || 1) - 1), updatedAt: serverTimestamp() });
+  lot.set(doc(db, "mea_assignments", batisseurUid), {
+    mentorEmail: key, mentorUid, mentorNom, assignedBy: byEmail, assignedAt: serverTimestamp(),
   });
-  // Propager mentorEmail dans mea_summaries pour que le mentor puisse filtrer
-  await setDoc(doc(db, "mea_summaries", batisseurUid), {
-    mentorEmail: key,
-    mentorNom,
-    updatedAt: serverTimestamp(),
-  }, { merge: true });
+  lot.set(doc(db, "mea_summaries", batisseurUid), { mentorEmail: key, mentorNom, updatedAt: serverTimestamp() }, { merge: true });
+  lot.set(doc(collection(db, "mea_affectations_histo")), {
+    batisseurUid, ancienMentor: ancienEmail || null, nouveauMentor: key, par: byEmail, at: serverTimestamp(),
+  });
+  await lot.commit();
 }
-
 async function unassignMentorFromSummary(batisseurUid) {
   await setDoc(doc(db, "mea_summaries", batisseurUid), {
-    mentorEmail: null,
-    mentorNom: null,
-    updatedAt: serverTimestamp(),
+    mentorEmail: null, mentorNom: null, updatedAt: serverTimestamp(),
   }, { merge: true });
 }
-async function unassignMentor(batisseurUid) {
-  await deleteDoc(doc(db, "mea_assignments", batisseurUid));
-  await unassignMentorFromSummary(batisseurUid);
+async function unassignMentor(batisseurUid, byEmail) {
+  const [cnt, ancien] = await Promise.all([recalculerCharges(), getMyAssignment(batisseurUid)]);
+  const lot = writeBatch(db);
+  if (ancien?.mentorEmail) {
+    lot.set(doc(db, "mea_charges", ancien.mentorEmail), { count: Math.max(0, (cnt[ancien.mentorEmail] || 1) - 1), updatedAt: serverTimestamp() });
+  }
+  lot.delete(doc(db, "mea_assignments", batisseurUid));
+  lot.set(doc(db, "mea_summaries", batisseurUid), { mentorEmail: null, mentorNom: null, updatedAt: serverTimestamp() }, { merge: true });
+  lot.set(doc(collection(db, "mea_affectations_histo")), {
+    batisseurUid, ancienMentor: ancien?.mentorEmail || null, nouveauMentor: null, par: byEmail || null, at: serverTimestamp(),
+  });
+  await lot.commit();
+}
+// Réaffecte en un clic tous les bâtisseurs d'un mentor vers un autre (l'historique est conservé)
+async function reaffecterMentor(ancienEmail, nouveau, byEmail) {
+  const [limite, cnt, as] = await Promise.all([getLimiteMentors(), recalculerCharges(), loadAllAssignments()]);
+  const aDeplacer = as.filter(a => a.mentorEmail === ancienEmail);
+  const place = limite - (cnt[nouveau.email] || 0);
+  if (aDeplacer.length > place) throw new Error(`${nouveau.nom || nouveau.email} n'a de la place que pour ${Math.max(0, place)} bâtisseur(s) (limite : ${limite}) ; il y en a ${aDeplacer.length} à déplacer.`);
+  for (const a of aDeplacer) await assignMentor(a.batisseurUid, nouveau.email, nouveau.uid, nouveau.nom || nouveau.email, byEmail);
+  return aDeplacer.length;
+}
+async function loadAllConfirmations() {
+  const snap = await getDocs(collection(db, "mea_confirmations"));
+  const out = {}; snap.docs.forEach(d => { out[d.id] = d.data(); });
+  return out;
 }
 async function getMyAssignment(batisseurUid) {
   const snap = await getDoc(doc(db, "mea_assignments", batisseurUid));
@@ -207,6 +254,40 @@ async function saveRencontre(uid, moisKey, data) {
 }
 
 // ============================================================
+// GRILLE HEBDOMADAIRE (annexe B) — 26 semaines
+// /users/{uid}/priv/mea_semaines — { pratiques: [{id,label}], semaines: { s1: { coches:{id:[7 booléens]}, note, victoire, defisPartages, defi? } } }
+//   (partagé avec le mentor ; « defi » seulement si defisPartages)
+// /users/{uid}/priv/mea_prive    — { semaines: { s1: { defi } } } (privé)
+// ============================================================
+function watchMyGrille(uid, callback) {
+  return watchSharedAndPrive(uid, "mea_semaines", (shared, prive) => {
+    const out = { pratiques: shared.pratiques || null, semaines: { ...(shared.semaines || {}) } };
+    for (const [k, r] of Object.entries(prive.semaines || {})) {
+      if (out.semaines[k] && r && r.defi !== undefined) out.semaines[k] = { ...out.semaines[k], defi: r.defi };
+    }
+    return out;
+  }, callback);
+}
+async function saveSemaine(uid, cle, data, pratiques) {
+  const { defi, ...autres } = data;
+  const texte = defi || "";
+  const partage = !!autres.defisPartages;
+  const lot = writeBatch(db);
+  lot.set(privRef(uid, "mea_prive"), { semaines: { [cle]: { defi: texte, updatedAt: serverTimestamp() } }, updatedAt: serverTimestamp() }, { merge: true });
+  const shared = { semaines: { [cle]: { ...autres, defi: partage ? texte : deleteField(), updatedAt: serverTimestamp() } }, updatedAt: serverTimestamp() };
+  if (pratiques) shared.pratiques = pratiques;
+  lot.set(privRef(uid, "mea_semaines"), shared, { merge: true });
+  await lot.commit();
+}
+async function savePratiques(uid, pratiques) {
+  await setDoc(privRef(uid, "mea_semaines"), { pratiques, updatedAt: serverTimestamp() }, { merge: true });
+}
+async function getGrilleOf(uid) {
+  const snap = await getDoc(privRef(uid, "mea_semaines"));
+  return snap.exists() ? snap.data() : {};
+}
+
+// ============================================================
 // CONFIRMATIONS DU MENTOR
 // /mea_confirmations/{batisseurUid} — { mois1: { statut: "confirmee" | "correction", version, demandes: [{champ, libelle, message}], par, at }, ... }
 // Écrit UNIQUEMENT par le mentor affecté (règles Firestore) : il ne touche jamais aux textes de l'étudiant.
@@ -219,6 +300,9 @@ function watchMyConfirmations(uid, callback) {
 async function getConfirmations(uid) {
   const snap = await getDoc(doc(db, "mea_confirmations", uid));
   return snap.exists() ? snap.data() : {};
+}
+async function saveDerniereConfirmee(uid, dateStr) {
+  await setDoc(doc(db, "mea_confirmations", uid), { derniereConfirmeeLe: dateStr }, { merge: true });
 }
 async function getRencontresOf(uid) {
   const snap = await getDoc(privRef(uid, "mea_rencontres"));
@@ -427,11 +511,12 @@ window.AbbaSync = {
   logIn, logOut, watchAuth, getUserProfile,
   watchAdmins,
   watchMyMentorRole, watchMentors, addMentor, removeMentor,
-  assignMentor, unassignMentor, unassignMentorFromSummary,
+  assignMentor, unassignMentor, unassignMentorFromSummary, getLimiteMentors, setLimiteMentors, recalculerCharges, reaffecterMentor, loadAllConfirmations,
   getMyAssignment, loadAllAssignments,
   watchMyPDP, saveMyPDP,
   watchMyRencontres, saveRencontre,
-  watchMyConfirmations, getConfirmations, getRencontresOf, saveConfirmation,
+  watchMyGrille, saveSemaine, savePratiques, getGrilleOf,
+  watchMyConfirmations, getConfirmations, saveDerniereConfirmee, getRencontresOf, saveConfirmation,
   saveSummary, loadAllSummaries, loadMySummaries,
   watchMyPDPOnce: readPDPOnce,
   loadAllUsers,

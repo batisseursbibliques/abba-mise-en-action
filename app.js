@@ -72,6 +72,7 @@ let unsubAdmins    = null;
 let unsubPDP       = null;
 let unsubRencontres = null;
 let unsubConfirmations = null;
+let unsubGrille = null;
 let unsubMentors   = null;   // liste complète des mentors (coordinateurs seulement)
 let unsubMyRole    = null;   // ma propre fiche de mentor (tout le monde)
 let ADMIN_OUVERT   = false;  // vrai une fois l'écran Admin chargé
@@ -284,8 +285,9 @@ function traduireErreur(err) {
 
 async function onAuthChanged(user) {
   // Nettoyer les listeners
-  [unsubAdmins, unsubPDP, unsubRencontres, unsubConfirmations, unsubMentors, unsubMyRole].forEach(fn => fn && fn());
-  unsubAdmins = unsubPDP = unsubRencontres = unsubConfirmations = unsubMentors = unsubMyRole = null;
+  [unsubAdmins, unsubPDP, unsubRencontres, unsubConfirmations, unsubGrille, unsubMentors, unsubMyRole].forEach(fn => fn && fn());
+  unsubAdmins = unsubPDP = unsubRencontres = unsubConfirmations = unsubGrille = unsubMentors = unsubMyRole = null;
+  MY_GRILLE = { pratiques: null, semaines: {} }; GRILLE_SEMAINE = null; GRILLE_DIRTY = false;
   MY_CONFIRMATIONS = {};
   ALL_MENTORS = [];
 
@@ -393,6 +395,13 @@ async function onAuthChanged(user) {
     MY_RENCONTRES = data;
     renderRencontresPanel();
     updateBilan();
+  });
+  // Grille hebdomadaire
+  if (unsubGrille) unsubGrille();
+  setupGrille();
+  unsubGrille = window.AbbaSync.watchMyGrille(user.uid, (data) => {
+    MY_GRILLE = data || { pratiques: null, semaines: {} };
+    if (!GRILLE_DIRTY) renderGrille();   // on ne redessine pas pendant que l'étudiant coche
   });
   // Confirmations et demandes de correction du mentor
   if (unsubConfirmations) unsubConfirmations();
@@ -1338,8 +1347,11 @@ function moisACorriger() {
   return MOIS_KEYS.find(k => statutRencontre(k) === "correction") || null;
 }
 
+let RENC_DIRTY = false;   // l'étudiant est en train de remplir : on ne redessine pas le formulaire sous ses doigts
 function renderRencontreForm() {
   const zone = document.getElementById("rencontreFormZone");
+  if (!zone.dataset.dirtyBound) { zone.addEventListener("input", () => { RENC_DIRTY = true; }); zone.dataset.dirtyBound = "1"; }
+  if (RENC_DIRTY && zone.querySelector("#r-save-btn")) return;
   const corr = moisACorriger();
   const moisKey = corr || prochainMoisDisponible();
 
@@ -1527,6 +1539,18 @@ function renderRencontreHistorique() {
   }).join("");
 }
 
+// Garde-fou : sur certains téléphones, relâcher un curseur remontait la page tout en haut.
+// On retient la position au moment où le doigt touche le curseur et on la remet si la page a sauté.
+let __scrollAvantCurseur = 0;
+["pointerdown", "touchstart", "input"].forEach(ev => document.addEventListener(ev, (e) => {
+  if (e.target && e.target.matches && e.target.matches('input[type="range"]')) __scrollAvantCurseur = window.scrollY;
+}, true));
+document.addEventListener("change", (e) => {
+  if (!(e.target && e.target.matches && e.target.matches('input[type="range"]'))) return;
+  const y = __scrollAvantCurseur;
+  [0, 60, 200, 500].forEach(d => setTimeout(() => { if (Math.abs(window.scrollY - y) > 40) window.scrollTo(0, y); }, d));
+}, true);
+
 window.updateRDim = function(key) {
   const val = document.getElementById("r-dim-" + key)?.value;
   if (val) document.getElementById("r-dim-val-" + key).textContent = val;
@@ -1579,6 +1603,7 @@ window.saveRencontre = async function(moisKey) {
 
   try {
     await window.AbbaSync.saveRencontre(CURRENT_USER.uid, moisKey, data);
+    RENC_DIRTY = false;
     MY_RENCONTRES = { ...MY_RENCONTRES, [moisKey]: { ...(MY_RENCONTRES[moisKey] || {}), ...data } };
     await pushSummary();
     renderRencontresPanel();
@@ -1764,7 +1789,7 @@ async function loadSuivi() {
   }
   empty.style.display = "none";
 
-  container.innerHTML = `<div class="suivi-cards">${data.map(s => {
+  container.innerHTML = `<p class="settings-hint" id="chargeMentor"></p><div class="suivi-cards">${data.map(s => {
     const moisLabel = s.moisEnCours === "bilan" ? "Bilan" :
       MOIS_LABELS[MOIS_KEYS.indexOf(s.moisEnCours)] || "—";
     const dimsHtml = DIMENSIONS.map(dim => {
@@ -1778,7 +1803,7 @@ async function loadSuivi() {
 
     return `<div class="suivi-accord">
       <button class="suivi-accord-head" onclick="toggleSuivi('${s.uid}')">
-        <span class="suivi-card-name">${escapeAttr(s.prenom || "")} ${escapeAttr(s.nom || s.email)}</span>
+        <span class="suivi-card-name"><span id="dot-${s.uid}"></span> ${escapeAttr(s.prenom || "")} ${escapeAttr(s.nom || s.email)}</span>
         <span class="suivi-badge ${s.moisEnCours}">${moisLabel}</span>
         <span class="suivi-accord-arrow" id="arrow-${s.uid}">▸</span>
       </button>
@@ -1789,7 +1814,8 @@ async function loadSuivi() {
         <div class="suivi-meta" style="margin-top:8px;">
           <span>📅 Débuté : ${escapeAttr(s.dateDebut || "—")}</span>
           <span>📋 PDP : ${s.pdpPct != null ? escapeAttr(s.pdpPct) + " %" : "—"}</span>
-          <span>→ Prochain : ${s.prochaineRencontre || "—"}</span>
+          <span>→ Prochain : ${s.prochaineRencontreLe ? escapeAttr(s.prochaineRencontreLe) : (s.prochaineRencontre || "—")}</span>
+          <span id="last-${s.uid}"></span>
         </div>
         <button class="btn-secondary" style="font-size:12px;padding:7px 12px;margin-top:10px;width:100%;"
           onclick="showPdpMentor('${s.uid}')">📋 Voir le PDP</button>
@@ -1803,17 +1829,196 @@ async function loadSuivi() {
   marquerRencontresAConfirmer(data);
 }
 
-// Le mentor voit, sur chaque carte, combien de rencontres attendent sa confirmation (seulement ses bâtisseurs)
+
+// ─────────────────────────────────────────────────────────────
+// GRILLE HEBDOMADAIRE (annexe B) — 26 semaines
+// Pratiques tirées de « Ma journée » (Parcours), du checklist spirituel (ABBA Life) et des disciplines de S13.
+// L'étudiant choisit celles qu'il suit (8 au plus) et peut en ajouter.
+// ─────────────────────────────────────────────────────────────
+const PRATIQUES_PROPOSEES = [
+  { id: "decl",       label: "Déclaration matin et soir" },
+  { id: "priere",     label: "Prière (matin, après-midi, soir)" },
+  { id: "bible",      label: "Lecture biblique du jour" },
+  { id: "meditation", label: "Méditer un passage" },
+  { id: "bilan",      label: "Bilan du soir" },
+  { id: "jeune",      label: "Jeûne" },
+  { id: "adoration",  label: "Adoration" },
+  { id: "communion",  label: "Communion fraternelle" },
+  { id: "service",    label: "Servir ou encourager quelqu’un" },
+  { id: "partage",    label: "Partager sa foi" },
+  { id: "generosite", label: "Générosité (un don)" },
+  { id: "silence",    label: "Silence et solitude" },
+];
+const PRATIQUES_DEFAUT = ["decl", "priere", "bible", "meditation", "bilan"];
+const MAX_PRATIQUES = 8;
+const NB_SEMAINES = 26;
+const JOURS_COURTS = ["L", "M", "M", "J", "V", "S", "D"];
+let MY_GRILLE = { pratiques: null, semaines: {} };
+let GRILLE_SEMAINE = null;
+let GRILLE_DIRTY = false;
+let GRILLE_CHOIX_OUVERT = false;
+
+function pratiquesActives() {
+  return (MY_GRILLE.pratiques && MY_GRILLE.pratiques.length) ? MY_GRILLE.pratiques
+    : PRATIQUES_PROPOSEES.filter(p => PRATIQUES_DEFAUT.includes(p.id));
+}
+function debutGrille() {
+  const d = MY_PDP?.s1?.dateDebut;
+  const t = d ? new Date(d + "T12:00:00") : null;
+  return t && !isNaN(t) ? t : null;
+}
+function jourDeSemaine(n, i) {   // date du jour i (0 = lundi) de la semaine n, à partir du début du coaching
+  const t = debutGrille(); if (!t) return null;
+  const x = new Date(t.getTime() + ((n - 1) * 7 + i) * 864e5);
+  return x;
+}
+function semaineCourante() {
+  const t = debutGrille(); if (!t) return 1;
+  return Math.min(NB_SEMAINES, Math.max(1, Math.floor((Date.now() - t.getTime()) / (7 * 864e5)) + 1));
+}
+function fmtJM(d) { return d ? d.getDate() + "/" + (d.getMonth() + 1) : ""; }
+
+function renderGrille() {
+  const zone = document.getElementById("grilleZone");
+  if (!zone) return;
+  if (GRILLE_SEMAINE == null) GRILLE_SEMAINE = semaineCourante();
+  const n = GRILLE_SEMAINE, cle = "s" + n;
+  const sem = MY_GRILLE.semaines[cle] || {};
+  const prat = pratiquesActives();
+
+  const LETTRES = ["D", "L", "M", "M", "J", "V", "S"];
+  const entetes = [0,1,2,3,4,5,6].map(i => { const d = jourDeSemaine(n, i); return `<th>${d ? LETTRES[d.getDay()] : "J" + (i + 1)}${d ? `<small>${fmtJM(d)}</small>` : ""}</th>`; }).join("");
+  const lignes = prat.map(p => `<tr><td class="gr-label">${escapeAttr(p.label)}</td>${[0,1,2,3,4,5,6].map(i =>
+    `<td><input type="checkbox" class="gr-case" data-p="${escapeAttr(p.id)}" data-j="${i}" ${(sem.coches?.[p.id] || [])[i] ? "checked" : ""}></td>`).join("")}</tr>`).join("");
+  const debut = jourDeSemaine(n, 0), fin = jourDeSemaine(n, 6);
+
+  zone.innerHTML = `
+    <label class="field"><span>Semaine</span>
+      <select class="text-input" id="gr-semaine">${Array.from({ length: NB_SEMAINES }, (_, i) => {
+        const a = jourDeSemaine(i + 1, 0), b = jourDeSemaine(i + 1, 6);
+        return `<option value="${i + 1}" ${i + 1 === n ? "selected" : ""}>Semaine ${i + 1}${a ? ` (${fmtJM(a)} – ${fmtJM(b)})` : ""}</option>`; }).join("")}</select>
+    </label>
+    ${debut ? "" : `<p class="settings-hint">Les dates apparaîtront quand tu auras renseigné la date de début dans l’étape S1 du PDP.</p>`}
+    <div class="gr-wrap"><table class="gr-table"><thead><tr><th class="gr-label">Pratiques</th>${entetes}</tr></thead><tbody>${lignes}</tbody></table></div>
+    <p class="settings-hint" id="gr-pct"></p>
+    <button type="button" class="link-btn" id="gr-choix-btn">${GRILLE_CHOIX_OUVERT ? "Fermer le choix des pratiques" : "✎ Choisir mes pratiques"}</button>
+    <div id="gr-choix" ${GRILLE_CHOIX_OUVERT ? "" : "hidden"}>
+      <p class="settings-hint">Choisis jusqu’à ${MAX_PRATIQUES} pratiques à cocher chaque jour. Tu peux ajouter les tiennes.</p>
+      ${PRATIQUES_PROPOSEES.concat(prat.filter(p => !PRATIQUES_PROPOSEES.some(q => q.id === p.id))).map(p =>
+        `<label class="check-item"><input type="checkbox" class="gr-prat" value="${escapeAttr(p.id)}" data-label="${escapeAttr(p.label)}" ${prat.some(q => q.id === p.id) ? "checked" : ""}> ${escapeAttr(p.label)}</label>`).join("")}
+      <div style="display:flex;gap:6px;margin-top:6px;">
+        <input type="text" class="text-input" id="gr-perso" maxlength="60" placeholder="Ajouter ma propre pratique…">
+        <button type="button" class="btn-secondary" id="gr-perso-btn">Ajouter</button>
+      </div>
+      <button type="button" class="btn-primary" id="gr-prat-save" style="margin-top:8px;width:100%;">Enregistrer mes pratiques</button>
+      <p class="auth-error" id="gr-prat-err"></p>
+    </div>
+    <hr style="border:0;border-top:1px dashed var(--line);margin:14px 0;">
+    <label class="field"><span>Note de la semaine (sur 10)</span>
+      <select class="text-input" id="gr-note"><option value="">—</option>${Array.from({ length: 10 }, (_, i) => `<option value="${i + 1}" ${Number(sem.note) === i + 1 ? "selected" : ""}>${i + 1}</option>`).join("")}</select>
+    </label>
+    <label class="field"><span>Victoire de la semaine</span><textarea class="text-input" rows="2" id="gr-victoire" placeholder="Ce qui a bien marché…">${escapeAttr(sem.victoire || "")}</textarea></label>
+    <label class="field"><span>Défi de la semaine</span><textarea class="text-input" rows="2" id="gr-defi" placeholder="Ce qui a été difficile…">${escapeAttr(sem.defi || "")}</textarea></label>
+    <label class="check-item"><input type="checkbox" id="gr-partage" ${sem.defisPartages ? "checked" : ""}> <span>Partager ce défi avec mon mentor</span></label>
+    <button type="button" class="btn-primary" id="gr-save" style="margin-top:10px;width:100%;">Enregistrer la semaine</button>
+    <p class="settings-hint" id="gr-msg" style="text-align:center;"></p>`;
+  majPctGrille();
+}
+function lireCoches() {
+  const coches = {};
+  document.querySelectorAll("#grilleZone .gr-case").forEach(c => {
+    const p = c.dataset.p; if (!coches[p]) coches[p] = [0,0,0,0,0,0,0];
+    coches[p][Number(c.dataset.j)] = c.checked ? 1 : 0;
+  });
+  return coches;
+}
+function majPctGrille() {
+  const cases = document.querySelectorAll("#grilleZone .gr-case");
+  const el = document.getElementById("gr-pct"); if (!el || !cases.length) return;
+  const ok = [...cases].filter(c => c.checked).length;
+  el.textContent = `${ok} case${ok > 1 ? "s" : ""} cochée${ok > 1 ? "s" : ""} sur ${cases.length} (${Math.round(ok / cases.length * 100)} %)`;
+}
+function setupGrille() {
+  const zone = document.getElementById("grilleZone");
+  if (!zone || zone.dataset.bound) return;
+  zone.dataset.bound = "1";
+  zone.addEventListener("input", () => { GRILLE_DIRTY = true; });
+  zone.addEventListener("change", (e) => {
+    if (e.target.id === "gr-semaine") { GRILLE_SEMAINE = Number(e.target.value); GRILLE_DIRTY = false; renderGrille(); return; }
+    if (e.target.classList.contains("gr-case")) majPctGrille();
+  });
+  zone.addEventListener("click", async (e) => {
+    const id = e.target.id;
+    if (id === "gr-choix-btn") { GRILLE_CHOIX_OUVERT = !GRILLE_CHOIX_OUVERT; document.getElementById("gr-choix").hidden = !GRILLE_CHOIX_OUVERT; e.target.textContent = GRILLE_CHOIX_OUVERT ? "Fermer le choix des pratiques" : "✎ Choisir mes pratiques"; }
+    else if (id === "gr-perso-btn") {
+      const inp = document.getElementById("gr-perso"); const t = inp.value.trim(); if (!t) return;
+      const pid = "perso-" + Date.now().toString(36);
+      inp.value = "";
+      e.target.closest("#gr-choix").querySelector("div").insertAdjacentHTML("beforebegin",
+        `<label class="check-item"><input type="checkbox" class="gr-prat" value="${pid}" data-label="${escapeAttr(t)}" checked> ${escapeAttr(t)}</label>`);
+    }
+    else if (id === "gr-prat-save") {
+      const choisies = [...document.querySelectorAll("#grilleZone .gr-prat")].filter(c => c.checked).map(c => ({ id: c.value, label: c.dataset.label }));
+      const err = document.getElementById("gr-prat-err");
+      if (!choisies.length) { err.textContent = "Choisis au moins une pratique."; return; }
+      if (choisies.length > MAX_PRATIQUES) { err.textContent = `Pas plus de ${MAX_PRATIQUES} pratiques : garde l’essentiel.`; return; }
+      try { await window.AbbaSync.savePratiques(CURRENT_USER.uid, choisies); MY_GRILLE.pratiques = choisies; GRILLE_CHOIX_OUVERT = false; GRILLE_DIRTY = false; renderGrille(); }
+      catch (e2) { console.error(e2); err.textContent = "Impossible d’enregistrer. Réessaie."; }
+    }
+    else if (id === "gr-save") {
+      const n = GRILLE_SEMAINE, msg = document.getElementById("gr-msg");
+      const data = {
+        coches: lireCoches(), note: Number(document.getElementById("gr-note").value) || null,
+        victoire: document.getElementById("gr-victoire").value, defi: document.getElementById("gr-defi").value,
+        defisPartages: document.getElementById("gr-partage").checked,
+      };
+      try {
+        await window.AbbaSync.saveSemaine(CURRENT_USER.uid, "s" + n, data, MY_GRILLE.pratiques ? null : pratiquesActives());
+        GRILLE_DIRTY = false; msg.textContent = "✓ Semaine enregistrée";
+      } catch (e2) { console.error(e2); msg.textContent = "Impossible d’enregistrer. Vérifie ta connexion et réessaie."; }
+    }
+  });
+}
+
+const RETARD_JOURS = 60;   // « deux mois » sans rencontre confirmée
+function joursDepuis(dateStr) {
+  if (!dateStr) return null;
+  const t = new Date(String(dateStr).slice(0, 10) + "T12:00:00").getTime();
+  return isNaN(t) ? null : Math.floor((Date.now() - t) / 864e5);
+}
+
+// Tableau de bord : sur chaque carte, rencontres à confirmer, date de la dernière rencontre confirmée et témoin rouge
 async function marquerRencontresAConfirmer(data) {
-  if (!IS_MENTOR || !CURRENT_USER) return;
+  if (!CURRENT_USER) return;
   const moi = String(CURRENT_USER.email || "").toLowerCase();
-  await Promise.all(data.filter(s => String(s.mentorEmail || "").toLowerCase() === moi).map(async (s) => {
+  // Ta charge : n sur la limite
+  const chargeEl = document.getElementById("chargeMentor");
+  if (chargeEl && IS_MENTOR) {
+    const n = data.filter(s => String(s.mentorEmail || "").toLowerCase() === moi).length;
+    const lim = await window.AbbaSync.getLimiteMentors();
+    chargeEl.textContent = `Ta charge : ${n} bâtisseur${n > 1 ? "s" : ""} sur ${lim}.`;
+  }
+  let toutes = null;
+  if (IS_ADMIN) { try { toutes = await window.AbbaSync.loadAllConfirmations(); } catch (e) { toutes = null; } }
+  await Promise.all(data.map(async (s) => {
+    const sien = IS_MENTOR && String(s.mentorEmail || "").toLowerCase() === moi;
+    let c = toutes ? (toutes[s.uid] || {}) : null;
     try {
-      const [r, c] = await Promise.all([window.AbbaSync.getRencontresOf(s.uid), window.AbbaSync.getConfirmations(s.uid)]);
-      const n = MOIS_KEYS.filter(k => r[k]?.verrouille && !(c[k] && c[k].version === versionRencontre(r[k]))).length;
-      const el = document.getElementById("pend-" + s.uid);
-      if (el && n) el.textContent = ` — ${n} à confirmer`;
+      if (sien) {
+        const [r, cc] = await Promise.all([window.AbbaSync.getRencontresOf(s.uid), window.AbbaSync.getConfirmations(s.uid)]);
+        c = cc;
+        const n = MOIS_KEYS.filter(k => r[k]?.verrouille && !(cc[k] && cc[k].version === versionRencontre(r[k]))).length;
+        const el = document.getElementById("pend-" + s.uid);
+        if (el && n) el.textContent = ` — ${n} à confirmer`;
+      }
     } catch (e) { /* lecture refusée : on n'affiche rien */ }
+    if (!c) return;
+    const derniere = c.derniereConfirmeeLe || "";
+    const j = joursDepuis(derniere || s.dateDebut);
+    const lastEl = document.getElementById("last-" + s.uid);
+    if (lastEl) lastEl.textContent = derniere ? `🗓 Dernière rencontre confirmée : ${derniere}` : "🗓 Aucune rencontre confirmée";
+    const dot = document.getElementById("dot-" + s.uid);
+    if (dot && j != null && j >= RETARD_JOURS) { dot.textContent = "🔴"; dot.title = "Plus de deux mois sans rencontre confirmée"; }
   }));
 }
 
@@ -1825,6 +2030,20 @@ window.showRencontresMentor = async function(uid) {
   let r, c;
   try { [r, c] = await Promise.all([window.AbbaSync.getRencontresOf(uid), window.AbbaSync.getConfirmations(uid)]); }
   catch (e) { console.error(e); alert("Impossible de lire les rencontres."); return; }
+
+  let grilleHtml = "";
+  try {
+    const g = await window.AbbaSync.getGrilleOf(uid);
+    const nums = Object.keys(g.semaines || {}).map(x => Number(x.slice(1))).filter(Boolean).sort((a, b) => b - a).slice(0, 4);
+    if (nums.length) {
+      grilleHtml = `<div class="pdp-mentor-section"><h3>Grille hebdomadaire — dernières semaines</h3>` + nums.map(num => {
+        const w = g.semaines["s" + num];
+        const tot = Object.values(w.coches || {}).reduce((a, t) => a + t.length, 0);
+        const ok = Object.values(w.coches || {}).reduce((a, t) => a + t.reduce((x, y) => x + (y ? 1 : 0), 0), 0);
+        return `<div class="pdp-mentor-row"><dt>Semaine ${num}</dt><dd>${tot ? Math.round(ok / tot * 100) + " % des cases" : "—"}${w.note ? " · note " + w.note + "/10" : ""}${w.victoire ? "<br>✓ " + escapeAttr(w.victoire) : ""}${w.defisPartages && w.defi ? "<br>⚠ " + escapeAttr(w.defi) : ""}</dd></div>`;
+      }).join("") + `</div>`;
+    }
+  } catch (e) { /* pas de grille lisible */ }
 
   const cartes = MOIS_KEYS.map((k, i) => {
     const d = r[k]; if (!d || !d.verrouille) return "";
@@ -1863,6 +2082,7 @@ window.showRencontresMentor = async function(uid) {
       <h2 style="font-family:var(--font-display);color:var(--navy);margin:0 0 6px;">Rencontres — ${escapeAttr(nom)}</h2>
       <p style="font-size:12px;color:var(--ink-soft);margin:0 0 16px;">Tu confirmes ce que l'étudiant a écrit, ou tu lui demandes de le corriger. Tu ne peux jamais modifier son texte.</p>
       ${cartes || "<p class='settings-hint'>Aucune rencontre enregistrée pour le moment.</p>"}
+      ${grilleHtml}
       ${estSonMentor ? "" : "<p class='settings-hint'>Seul le mentor affecté peut confirmer ou demander une correction.</p>"}
       <button class="btn-secondary" style="width:100%;margin-top:8px;" onclick="document.getElementById('rencMentorOverlay').remove()">Fermer</button>
     </div>
@@ -1874,6 +2094,11 @@ window.confirmerRencontre = async function(uid, k) {
   const d = window.__rencCache?.r?.[k]; if (!d) return;
   try {
     await window.AbbaSync.saveConfirmation(uid, k, { statut: "confirmee", version: versionRencontre(d), par: CURRENT_USER.email });
+    // On retient la date de la dernière rencontre confirmée (sert au tableau de bord et aux alertes)
+    try {
+      const deja = (await window.AbbaSync.getConfirmations(uid)).derniereConfirmeeLe || "";
+      if (d.date && d.date > deja) await window.AbbaSync.saveDerniereConfirmee(uid, d.date);
+    } catch (e2) { console.warn(e2); }
     await window.showRencontresMentor(uid);
     marquerRencontresAConfirmer(SUIVI_DATA);
   } catch (e) { console.error(e); alert("Échec de la confirmation. Réessaie."); }
@@ -2078,9 +2303,14 @@ window.closePdpMentor = function(e) {
 // ─────────────────────────────────────────────────────────────
 // ADMIN — mentors + assignments
 // ─────────────────────────────────────────────────────────────
+let ADMIN_LIMITE = 20;
 async function loadAdmin() {
   ALL_USERS = await window.AbbaSync.loadAllUsers();
   ALL_ASSIGNMENTS = await window.AbbaSync.loadAllAssignments();
+  ADMIN_LIMITE = await window.AbbaSync.getLimiteMentors();
+  setVal("adminLimite", ADMIN_LIMITE);
+  window.AbbaSync.recalculerCharges().catch(() => {});   // remet les compteurs d'accord avec les affectations
+  afficherAlertesCoord();
   ADMIN_OUVERT = true;
   chargerDemandesAcces();
   renderMentorsList();
@@ -2089,16 +2319,22 @@ async function loadAdmin() {
   renderAssignmentsList();
 }
 
+function chargeDe(email) { return ALL_ASSIGNMENTS.filter(a => a.mentorEmail === String(email).toLowerCase()).length; }
+
 function renderMentorsList() {
   const container = document.getElementById("mentorsList");
   if (!ALL_MENTORS.length) { container.innerHTML = "<p class='settings-hint'>Aucun mentor pour l'instant.</p>"; return; }
-  container.innerHTML = ALL_MENTORS.map(m => `
+  container.innerHTML = ALL_MENTORS.map(m => {
+    const n = chargeDe(m.email);
+    return `
     <div class="mentor-chip">
-      ${m.nom || m.email}
+      ${escapeAttr(m.nom || m.email)} <small>(${n}/${ADMIN_LIMITE})</small>
+      ${n ? `<button class="mentor-chip-del" title="Réaffecter ses bâtisseurs à un autre mentor" style="font-size:13px;"
+        onclick="reaffecterMentorUI('${m.email}')">⇄</button>` : ""}
       <button class="mentor-chip-del" title="Retirer le rôle de mentor"
         onclick="removeMentor('${m.email}')">×</button>
-    </div>
-  `).join("");
+    </div>`;
+  }).join("");
 }
 
 function renderMentorSelect() {
@@ -2117,9 +2353,11 @@ function renderAssignSelects() {
   bSel.innerHTML = `<option value="">— Bâtisseur —</option>` +
     ALL_USERS.map(u => `<option value="${u.uid}">${u.prenom || ""} ${u.nom || u.email}</option>`).join("");
   mSel.innerHTML = `<option value="">— Mentor —</option>` +
-    ALL_MENTORS.map(m => `<option value="${m.uid}|${m.email}|${m.nom || m.email}">
-      ${m.nom || m.email}
-    </option>`).join("");
+    ALL_MENTORS.map(m => {
+      const n = chargeDe(m.email), plein = n >= ADMIN_LIMITE;
+      return `<option value="${m.uid}|${m.email}|${m.nom || m.email}" ${plein ? "disabled" : ""}>
+      ${escapeAttr(m.nom || m.email)} (${n}/${ADMIN_LIMITE}${plein ? " — complet" : ""})
+    </option>`; }).join("");
 }
 
 function renderAssignmentsList() {
@@ -2169,6 +2407,80 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 
+// Limite de bâtisseurs par mentor (réglée par le coordinateur principal)
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("saveLimiteBtn")?.addEventListener("click", async () => {
+    const n = parseInt(getVal("adminLimite"));
+    const msg = document.getElementById("limiteMsg");
+    if (!(n >= 1 && n <= 20)) { msg.textContent = "Choisis un nombre entre 1 et 20."; return; }
+    try {
+      await window.AbbaSync.setLimiteMentors(n, CURRENT_USER.email);
+      ADMIN_LIMITE = n; msg.textContent = "✓ Limite enregistrée : " + n + " par mentor.";
+      renderMentorsList(); renderAssignSelects();
+    } catch (e) { msg.textContent = "Impossible d'enregistrer : " + e.message; }
+  });
+});
+
+// Réaffecter en un clic tous les bâtisseurs d'un mentor absent
+window.reaffecterMentorUI = function(email) {
+  const n = chargeDe(email);
+  const autres = ALL_MENTORS.filter(m => m.email !== email);
+  document.getElementById("reaffOverlay")?.remove();
+  document.body.insertAdjacentHTML("beforeend", `
+  <div class="pdp-mentor-overlay" id="reaffOverlay" onclick="if(event.target.id==='reaffOverlay')this.remove()">
+    <div class="pdp-mentor-box">
+      <button class="pdp-mentor-close" onclick="document.getElementById('reaffOverlay').remove()">×</button>
+      <h2 style="font-family:var(--font-display);color:var(--navy);margin:0 0 8px;">Réaffecter ${n} bâtisseur${n > 1 ? "s" : ""}</h2>
+      <p class="settings-hint">Tous les bâtisseurs de ce mentor passent au mentor choisi. L'historique des affectations est conservé.</p>
+      <select id="reaffCible" class="text-input">
+        <option value="">— Nouveau mentor —</option>
+        ${autres.map(m => { const c = chargeDe(m.email); const place = ADMIN_LIMITE - c;
+          return `<option value="${m.uid}|${m.email}|${escapeAttr(m.nom || m.email)}" ${place < n ? "disabled" : ""}>${escapeAttr(m.nom || m.email)} (${c}/${ADMIN_LIMITE})${place < n ? " — pas assez de place" : ""}</option>`; }).join("")}
+      </select>
+      <button class="btn-primary" style="width:100%;margin-top:10px;" id="reaffGo">Réaffecter</button>
+      <p class="auth-error" id="reaffErr"></p>
+    </div>
+  </div>`);
+  document.getElementById("reaffGo").onclick = async () => {
+    const v = document.getElementById("reaffCible").value;
+    if (!v) { document.getElementById("reaffErr").textContent = "Choisis le nouveau mentor."; return; }
+    const [uid, mail, nom] = v.split("|");
+    document.getElementById("reaffGo").disabled = true;
+    try {
+      await window.AbbaSync.reaffecterMentor(email, { uid, email: mail, nom }, CURRENT_USER.email);
+      document.getElementById("reaffOverlay").remove();
+      await loadAdmin();
+    } catch (e) { document.getElementById("reaffErr").textContent = e.message; document.getElementById("reaffGo").disabled = false; }
+  };
+};
+
+// Alerte au coordinateur : bâtisseurs sans rencontre confirmée depuis deux mois
+async function afficherAlertesCoord() {
+  const zone = document.getElementById("alertesRencontres");
+  if (!zone) return;
+  try {
+    const [conf, summ] = await Promise.all([window.AbbaSync.loadAllConfirmations(), window.AbbaSync.loadAllSummaries()]);
+    const sm = Object.fromEntries(summ.map(x => [x.uid, x]));
+    const um = Object.fromEntries(ALL_USERS.map(u => [u.uid, u]));
+    const lignes = [];
+    ALL_ASSIGNMENTS.forEach(a => {
+      const c = conf[a.batisseurUid] || {};
+      const sx = sm[a.batisseurUid] || {};
+      const assigneLe = a.assignedAt && a.assignedAt.toDate ? a.assignedAt.toDate().toISOString().slice(0, 10) : "";
+      const base = c.derniereConfirmeeLe || sx.dateDebut || assigneLe;
+      const j = joursDepuis(base);
+      if (j != null && j >= RETARD_JOURS) {
+        const u = um[a.batisseurUid] || {};
+        lignes.push({ j, nom: `${u.prenom || ""} ${u.nom || u.email || a.batisseurUid}`.trim(), mentor: a.mentorNom || a.mentorEmail, derniere: c.derniereConfirmeeLe || "" });
+      }
+    });
+    lignes.sort((x, y) => y.j - x.j);
+    zone.innerHTML = lignes.length
+      ? lignes.map(l => `<div class="assignment-row"><span>🔴 ${escapeAttr(l.nom)}</span><span class="assignment-arrow">→</span><span>${escapeAttr(l.mentor)}</span><small>${l.derniere ? "dernière : " + escapeAttr(l.derniere) : "aucune rencontre confirmée"} · ${l.j} j</small></div>`).join("")
+      : "<p class='settings-hint'>✓ Aucun bâtisseur en retard de plus de deux mois.</p>";
+  } catch (e) { console.error(e); zone.innerHTML = "<p class='settings-hint'>Alertes indisponibles pour le moment.</p>"; }
+}
+
 window.removeMentor = async function(email) {
   if (!confirm(`Retirer le rôle de mentor à ${email} ?`)) return;
   await window.AbbaSync.removeMentor(email);
@@ -2177,7 +2489,7 @@ window.removeMentor = async function(email) {
 
 window.deleteAssignment = async function(batisseurUid) {
   if (!confirm("Supprimer cet assignment ?")) return;
-  await window.AbbaSync.unassignMentor(batisseurUid);
+  await window.AbbaSync.unassignMentor(batisseurUid, CURRENT_USER.email);
   await loadAdmin();
 };
 
