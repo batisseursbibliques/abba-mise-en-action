@@ -474,7 +474,7 @@ function problemeEtape(key, d) {
     case "s2":  return plein(d.s2?.vision) && plein(d.s2?.mission) ? "" : "Pour terminer cette étape, écris au moins ta vision à 5 ans et ta mission de vie.";
     case "s3":  return DIMENSIONS.every(dim => d.s3?.[dim.key]?.note > 0) ? "" : "Pour terminer cette étape, évalue les 8 dimensions (bouge chaque curseur).";
     case "s5":  return plein(d.s5?.ministre) && plein(d.s5?.raisons) ? "" : "Pour terminer cette étape, choisis ton ministère et écris tes raisons.";
-    case "s6":  return plein(d.s6?.typeProjet) && plein(d.s6?.description) ? "" : "Pour terminer cette étape, choisis le type de ton projet et décris-le.";
+    case "s6":  return plein(d.s6?.voie) && plein(d.s6?.description) ? "" : "Pour terminer cette étape, choisis ta voie et décris ton projet.";
     case "s12": return plein(d.s12?.engagements) && d.s12?.confirme === true ? "" : "Pour terminer cette étape, écris tes engagements et coche « Je confirme ces engagements ».";
     default:    return plein(d[key]) ? "" : "Remplis au moins un champ avant de terminer cette étape.";
   }
@@ -504,6 +504,82 @@ function chargerPdpPreservantBrouillon() {
   PDP_DIRTY.forEach(k => { fusion[k] = brouillon[k]; });
   MY_PDP = fusion;
   try { loadPdpIntoForm(); } finally { MY_PDP = sauve; }
+}
+
+// ─────────────────────────────────────────────────────────────
+// S6 — les voies du projet personnel (contenu dans voies.js)
+// ─────────────────────────────────────────────────────────────
+let VOIE_AFFICHEE = null;
+const voieParId = (id) => (window.VOIES_PROJET || []).find(v => v.id === id) || null;
+
+function construireChoixVoies() {
+  const zone = document.getElementById("s6VoieChoix");
+  if (!zone) return;
+  zone.innerHTML = (window.VOIES_PROJET || []).map(v =>
+    `<label class="check-item"><input type="radio" name="s6Voie" value="${v.id}"> ${v.titre}</label>`).join("");
+  zone.addEventListener("change", (e) => {
+    if (e.target.name !== "s6Voie") return;
+    afficherVoie(e.target.value);
+    remplirReponsesVoie(MY_PDP?.s6?.reponses);
+  });
+}
+
+function majLibellesVoie(v) {
+  const lab = document.getElementById("s6RevenusLabel");
+  if (lab) lab.textContent = v ? v.revenuLabel : "Revenus mensuels visés à 6 mois (FCFA)";
+  const periodes = { s6LancM1: 0, s6LancM23: 1, s6LancM46: 2 };
+  Object.entries(periodes).forEach(([id, i]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (!el.dataset.ph) el.dataset.ph = el.placeholder;
+    el.placeholder = v && v.etapes[i] ? "Ex. : " + v.etapes[i].actions.slice(0, 2).join(" ") : el.dataset.ph;
+  });
+}
+
+function afficherVoie(id) {
+  const bloc = document.getElementById("s6VoieBloc");
+  if (!bloc) return;
+  const v = voieParId(id);
+  if (!v) { bloc.innerHTML = ""; VOIE_AFFICHEE = ""; majLibellesVoie(null); return; }
+  if (VOIE_AFFICHEE === id) return;          // déjà affichée : on ne la redessine pas (les réponses tapées restent)
+  VOIE_AFFICHEE = id;
+  const liste = (t) => `<ul style="margin:4px 0 0 18px;">${t.map(x => `<li>${x}</li>`).join("")}</ul>`;
+  bloc.innerHTML = `
+    <div class="card">
+      <p class="eyebrow">${v.titre}</p>
+      <p class="settings-hint">${v.pour}</p>
+      ${v.avertissement ? `<p class="settings-hint" style="font-weight:600;">⚠️ ${v.avertissement}</p>` : ""}
+      <p class="settings-hint">📚 ${v.source}</p>
+    </div>
+    <div class="card">
+      <p class="eyebrow">Tes réponses pour cette voie</p>
+      ${v.questions.map(q => `
+        <label class="field"><span>${q.label}</span>
+          ${q.aide ? `<small class="settings-hint">${q.aide}</small>` : ""}
+          <textarea id="s6q-${v.id}-${q.id}" data-q="${v.id}-${q.id}" class="text-input" rows="3"></textarea>
+        </label>`).join("")}
+    </div>
+    <div class="card">
+      <p class="eyebrow">Les étapes conseillées sur 6 mois</p>
+      ${v.etapes.map(e => `<p style="margin:10px 0 0;"><strong>${e.periode} — ${e.titre}</strong></p>${liste(e.actions)}`).join("")}
+    </div>
+    <div class="card">
+      <p class="eyebrow">Ce que tu suivras (indicateurs)</p>
+      ${liste(v.indicateurs)}
+    </div>
+    <div class="card">
+      <p class="eyebrow">Étapes validées par ton mentor</p>
+      <p class="settings-hint">Ton mentor validera ces étapes, ou te demandera de les reprendre, au fil des 6 mois.</p>
+      ${liste(v.jalons.map(j => j.label))}
+    </div>`;
+  majLibellesVoie(v);
+}
+
+function remplirReponsesVoie(reponses) {
+  Object.entries(reponses || {}).forEach(([k, val]) => {
+    const el = document.getElementById("s6q-" + k);
+    if (el) el.value = val;
+  });
 }
 
 function construirePiedsEtapes() {
@@ -588,6 +664,7 @@ function setupPdpNav() {
   });
 
   // Pieds d'étape : enregistrer / terminer / étape suivante, outils de la formation, suivi des brouillons
+  construireChoixVoies();
   construirePiedsEtapes();
   updatePdpProgress();
 
@@ -802,10 +879,12 @@ function loadPdpIntoForm() {
   setVal("s5PlanM56",  d.s5?.planM56);
 
   // S6 — projet économique
-  if (d.s6?.typeProjet) {
-    const radio = document.querySelector(`input[name="s6TypeProjet"][value="${d.s6.typeProjet}"]`);
-    if (radio) radio.checked = true;
-  }
+  // Voie : la nouvelle valeur, ou l'ancien « type de projet » converti
+  const voieId = d.s6?.voie || (window.VOIES_ANCIENNES || {})[d.s6?.typeProjet] || "";
+  const radioVoie = voieId && document.querySelector(`input[name="s6Voie"][value="${voieId}"]`);
+  if (radioVoie) radioVoie.checked = true;
+  afficherVoie(voieId);
+  remplirReponsesVoie(d.s6?.reponses);
   setVal("s6Description", d.s6?.description);
   setVal("s6Objectifs",   d.s6?.objectifs);
   if (d.s6?.competences) {
@@ -923,7 +1002,8 @@ function collectPdpData() {
       planM56:  getVal("s5PlanM56"),
     },
     s6: {
-      typeProjet:        document.querySelector('input[name="s6TypeProjet"]:checked')?.value || "",
+      voie:              document.querySelector('input[name="s6Voie"]:checked')?.value || "",
+      reponses:          Object.fromEntries([...document.querySelectorAll("#s6VoieBloc textarea[data-q]")].map(el => [el.dataset.q, el.value.trim()])),
       description:       getVal("s6Description"),
       objectifs:         getVal("s6Objectifs"),
       competences:       document.querySelector('input[name="s6Competences"]:checked')?.value || "",
@@ -1643,7 +1723,13 @@ window.showPdpMentor = async function(uid) {
 
       <div class="pdp-mentor-section">
         <h3>S6 — Projet économique</h3>
-        <div class="pdp-mentor-row"><dt>Type</dt><dd>${escapeAttr(d.s6?.typeProjet) || "—"}</dd></div>
+        <div class="pdp-mentor-row"><dt>Voie</dt><dd>${escapeAttr((voieParId(d.s6?.voie || (window.VOIES_ANCIENNES || {})[d.s6?.typeProjet]) || {}).titre) || "—"}</dd></div>
+        ${(() => {
+          const v = voieParId(d.s6?.voie || (window.VOIES_ANCIENNES || {})[d.s6?.typeProjet]);
+          if (!v) return "";
+          return v.questions.map(q => `<div class="pdp-mentor-row"><dt>${escapeAttr(q.label)}</dt><dd>${escapeAttr(d.s6?.reponses?.[v.id + "-" + q.id]) || "—"}</dd></div>`).join("")
+            + `<div class="pdp-mentor-row"><dt>Étapes à valider</dt><dd>${v.jalons.map(j => escapeAttr(j.label)).join("<br>")}</dd></div>`;
+        })()}
         <div class="pdp-mentor-row"><dt>Description</dt><dd>${escapeAttr(d.s6?.description) || "—"}</dd></div>
         <div class="pdp-mentor-row"><dt>Objectifs 6 mois</dt><dd>${escapeAttr(d.s6?.objectifs) || "—"}</dd></div>
         <div class="pdp-mentor-row"><dt>Revenus visés</dt><dd>${d.s6?.revenusVises ? escapeAttr(d.s6.revenusVises) + " FCFA/mois" : "—"}</dd></div>

@@ -286,17 +286,11 @@ if ('serviceWorker' in navigator) {
       <!-- S6 — Projet économique -->
       <div class="pdp-section" id="pdp-s6">
         <div class="card">
-          <p class="eyebrow">S6 — Projet économique personnel</p>
-          <p class="settings-hint">Quel type de projet économique tu portes ?</p>
-          <div class="check-group">
-            <label class="check-item"><input type="radio" name="s6TypeProjet" value="smartgarden"> Projet ABBA existant — SmartGarden</label>
-            <label class="check-item"><input type="radio" name="s6TypeProjet" value="entrepreneurial"> Projet entrepreneurial personnel</label>
-            <label class="check-item"><input type="radio" name="s6TypeProjet" value="salarie"> Emploi salarié</label>
-            <label class="check-item"><input type="radio" name="s6TypeProjet" value="investissement"> Investissement dans le projet d'un autre Bâtisseur</label>
-            <label class="check-item"><input type="radio" name="s6TypeProjet" value="carriere"> Poursuite / développement de carrière existante</label>
-            <label class="check-item"><input type="radio" name="s6TypeProjet" value="competences"> Développement de compétences pour future activité</label>
-          </div>
+          <p class="eyebrow">S6 — Projet personnel</p>
+          <p class="settings-hint">Choisis la voie qui correspond à ta situation. Les questions et les étapes s’adaptent à ton choix.</p>
+          <div class="check-group" id="s6VoieChoix"></div>
         </div>
+        <div id="s6VoieBloc"></div>
         <div class="card">
           <p class="eyebrow">Description et objectifs du projet</p>
           <label class="field"><span>Nom et description du projet</span>
@@ -334,7 +328,7 @@ if ('serviceWorker' in navigator) {
           <label class="field"><span>Mois 4–6 — Développement</span>
             <textarea id="s6LancM46" class="text-input" rows="2" placeholder="Premiers revenus, ajustements, expansion…"></textarea>
           </label>
-          <label class="field"><span>Revenus mensuels visés à 6 mois (FCFA)</span>
+          <label class="field"><span id="s6RevenusLabel">Revenus mensuels visés à 6 mois (FCFA)</span>
             <input type="number" id="s6RevenusVises" class="text-input" placeholder="0">
           </label>
         </div>
@@ -684,6 +678,7 @@ if ('serviceWorker' in navigator) {
 
 </div><!-- fin #app -->
 
+<script src="voies.js"></script>
 <script type="module" src="sync.js"></script>
 <script type="module" src="app.js"></script>
 </body>
