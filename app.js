@@ -2253,6 +2253,15 @@ function setupDiscipline() {
 }
 
 const RETARD_JOURS = 60;   // « deux mois » sans rencontre confirmée
+// Date de la dernière rencontre réellement confirmée (version confirmée = version actuelle de l'étudiant)
+function derniereConfirmeeCalc(r, c) {
+  let max = "";
+  MOIS_KEYS.forEach(k => {
+    const d = r?.[k], cf = c?.[k];
+    if (d && d.verrouille && cf && cf.statut === "confirmee" && cf.version === versionRencontre(d) && d.date && d.date > max) max = d.date;
+  });
+  return max;
+}
 function joursDepuis(dateStr) {
   if (!dateStr) return null;
   const t = new Date(String(dateStr).slice(0, 10) + "T12:00:00").getTime();
@@ -2279,6 +2288,11 @@ async function marquerRencontresAConfirmer(data) {
       if (sien) {
         const [r, cc] = await Promise.all([window.AbbaSync.getRencontresOf(s.uid), window.AbbaSync.getConfirmations(s.uid)]);
         c = cc;
+        const calc = derniereConfirmeeCalc(r, cc);
+        if (calc && calc !== (cc.derniereConfirmeeLe || "")) {   // rattrape les confirmations faites avant l'existence de ce champ
+          try { await window.AbbaSync.saveDerniereConfirmee(s.uid, calc); } catch (e3) { console.warn(e3); }
+          c = { ...cc, derniereConfirmeeLe: calc };
+        }
         const n = MOIS_KEYS.filter(k => r[k]?.verrouille && !(cc[k] && cc[k].version === versionRencontre(r[k]))).length;
         const el = document.getElementById("pend-" + s.uid);
         if (el && n) el.textContent = ` — ${n} à confirmer`;
@@ -2303,10 +2317,17 @@ window.showRencontresMentor = async function(uid) {
   try { [r, c] = await Promise.all([window.AbbaSync.getRencontresOf(uid), window.AbbaSync.getConfirmations(uid)]); }
   catch (e) { console.error(e); alert("Impossible de lire les rencontres."); return; }
 
+  // même rattrapage à l'ouverture de la fenêtre du mentor
+  if (estSonMentor) {
+    const calc = derniereConfirmeeCalc(r, c);
+    if (calc && calc !== (c.derniereConfirmeeLe || "")) { try { await window.AbbaSync.saveDerniereConfirmee(uid, calc); } catch (e3) { console.warn(e3); } }
+  }
+
   let ecoHtml = "";
   try {
     const eco = await window.AbbaSync.getEconomieOf(uid);
     const cles = Object.keys(eco.mois || {}).sort().reverse().slice(0, 6);
+    if (!cles.length) ecoHtml = `<div class="pdp-mentor-section"><h3>Suivi économique</h3><p class="settings-hint">Aucun mois enregistré par cet étudiant pour le moment.</p></div>`;
     if (cles.length) {
       window.__ecoCache = { uid, mois: eco.mois };
       ecoHtml = `<div class="pdp-mentor-section"><h3>Suivi économique</h3><p class="settings-hint">Chiffres saisis par l'étudiant. Tu indiques seulement si ils te paraissent plausibles ; l'application ne manipule pas d'argent.</p>` + cles.map(k => {
@@ -2315,7 +2336,10 @@ window.showRencontresMentor = async function(uid) {
         return `<div class="pdp-mentor-row"><dt>${escapeAttr(libelleMois(k))}</dt><dd>Revenus ${fcfa(d.revenus)} · Dépenses ${fcfa(d.depenses)} · <strong>Net ${net < 0 ? "−" : ""}${fcfa(Math.abs(net))}</strong>${d.note ? "<br>" + escapeAttr(d.note) : ""}<br>${vu ? `<span class="badge-statut ok">✓ vu, plausible</span>` : (estSonMentor ? `<button class="btn-secondary" style="font-size:12px;padding:5px 10px;margin-top:4px;" onclick="marquerVuEco('${uid}','${k}')">✓ Vu, plausible</button>` : `<span class="badge-statut att">pas encore vu</span>`)}</dd></div>`;
       }).join("") + `</div>`;
     }
-  } catch (e) { /* mentor non affecté : pas de lecture */ }
+  } catch (e) {
+    console.error("suivi économique :", e);
+    ecoHtml = `<div class="pdp-mentor-section"><h3>Suivi économique</h3><p class="settings-hint">Lecture impossible pour ce compte (${escapeAttr(e.code || e.message || "erreur")}). ${estSonMentor ? "" : "Seul le mentor affecté à cet étudiant voit ces chiffres."}</p></div>`;
+  }
 
   let grilleHtml = "";
   try {

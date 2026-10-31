@@ -1,4 +1,4 @@
-const CACHE = "abba-mea-v23";
+const CACHE = "abba-mea-v24";
 const ASSETS = [
   "./", "./index.html", "./style.css", "./app.js", "./sync.js", "./voies.js", "./ministeres.js", "./declaration.js",
   "./firebase-config.js", "./manifest.json", "./logo.png",
