@@ -92,6 +92,11 @@ if ('serviceWorker' in navigator) {
       </div>
 
       <div class="card">
+        <p class="eyebrow">📅 Prochaine rencontre</p>
+        <p class="settings-hint" id="accueilProchaine">—</p>
+      </div>
+
+      <div class="card">
         <p class="eyebrow">📊 Bilan final</p>
         <p class="settings-hint">Synthèse automatique de ta progression sur 6 mois.</p>
         <button class="link-btn" data-goto="bilan">Ouvrir Bilan →</button>
@@ -682,6 +687,15 @@ if ('serviceWorker' in navigator) {
         <a class="link-btn" href="https://batisseursbibliques.org/abba-life/" style="display:block;margin-bottom:6px;">Ouvrir ABBA Life →</a>
         <a class="link-btn" href="https://batisseursbibliques.org/ABBA-Parcours/" style="display:block;margin-bottom:10px;">Ouvrir Parcours Bâtisseur →</a>
         <button class="btn-secondary" id="logoutBtn">Se déconnecter</button>
+      </div>
+
+      <div class="card settings-card">
+        <p class="eyebrow">🔔 Rappels</p>
+        <label class="check-item"><input type="checkbox" id="rap-rencontre"> <span>Me rappeler ma prochaine rencontre (la veille à 18 h et le matin à 7 h 30)</span></label>
+        <label class="check-item"><input type="checkbox" id="rap-grille"> <span>Me rappeler de cocher ma journée, chaque jour à</span></label>
+        <input type="time" class="text-input" id="rap-heure" value="20:00" style="max-width:140px;margin:4px 0 8px 28px;">
+        <button class="btn-primary" id="rap-save" type="button" style="width:100%;">Enregistrer mes rappels</button>
+        <p class="settings-hint" id="rap-etat"></p>
       </div>
     </section>
 

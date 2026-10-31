@@ -1,3 +1,4 @@
+import { estNatif, lireNatif, pauseNatif } from "./voixNative.js";
 /* ============================================================
    ABBA Mise en Action — app.js
    Phase 2 du Parcours Bâtisseur
@@ -405,6 +406,7 @@ async function onAuthChanged(user) {
   if (unsubGrille) unsubGrille();
   setupGrille();
   setupDiscipline();
+  setupRappels();
   if (unsubEco) unsubEco();
   setupEconomie();
   unsubEco = window.AbbaSync.watchMyEconomie(user.uid, (data) => {
@@ -1651,6 +1653,8 @@ window.saveRencontre = async function(moisKey) {
 };
 
 function updateAccueilRencontresHint() {
+  afficherProchaineRencontre();
+  programmerRappels(false);
   const hint = document.getElementById("accueilRencontresHint");
   const faites = MOIS_KEYS.filter(k => MY_RENCONTRES[k]?.verrouille).length;
   const conf = nbConfirmees();
@@ -2240,7 +2244,26 @@ function declDire(i) {
 }
 function declArreter() {
   DECL.jeton++; DECL.etat = "stop"; DECL.i = 0;
+  if (estNatif()) pauseNatif().catch(() => {});
   if ("speechSynthesis" in window) speechSynthesis.cancel();
+  declBoutons(); declMarquer();
+}
+// Dans l'APK, la voix du téléphone continue quand l'écran s'éteint ; dans le navigateur, on utilise la voix du navigateur
+function declLire(i) {
+  if (!estNatif()) { declDire(i); return; }
+  const jeton = DECL.jeton;
+  DECL.i = i; DECL.etat = "lecture"; declBoutons(); declMarquer();
+  lireNatif({
+    textes: DECL.morceaux.map(m => m.t), depuis: i, vitesse: DECL.vitesse, titre: "Ma déclaration", details: "ABBA Mise en Action", langue: "fr",
+    onIndex: (ix) => { if (jeton === DECL.jeton) { DECL.i = ix; declMarquer(); } },
+    onFin: () => { if (jeton === DECL.jeton) declArreter(); },
+    onErreur: () => { if (jeton === DECL.jeton) { document.getElementById("declMsg").textContent = "La lecture à voix haute n'a pas pu démarrer sur cet appareil."; declArreter(); } },
+  }).catch(() => { if (jeton === DECL.jeton) { document.getElementById("declMsg").textContent = "La lecture à voix haute n'a pas pu démarrer sur cet appareil."; declArreter(); } });
+}
+function declPause() {
+  DECL.jeton++; DECL.etat = "pause";
+  if (estNatif()) pauseNatif().then(ix => { if (ix >= 0) DECL.i = ix; }).catch(() => {});
+  else if ("speechSynthesis" in window) speechSynthesis.cancel();
   declBoutons(); declMarquer();
 }
 function setupDiscipline() {
@@ -2261,19 +2284,98 @@ function setupDiscipline() {
     ouvrirVersetsBible(ph.refs || [], String(ph.t || "").replace(/\{nom\}/g, declNom()));
   });
   document.getElementById("declPlay").addEventListener("click", () => {
-    if (!("speechSynthesis" in window)) { document.getElementById("declMsg").textContent = "Ton appareil ne propose pas la lecture à voix haute."; return; }
+    if (!estNatif() && !("speechSynthesis" in window)) { document.getElementById("declMsg").textContent = "Ton appareil ne propose pas la lecture à voix haute."; return; }
     document.getElementById("declMsg").textContent = "";
-    if (DECL.etat === "lecture") { const i = DECL.i; DECL.jeton++; speechSynthesis.cancel(); DECL.etat = "pause"; DECL.i = i; declBoutons(); declMarquer(); return; }
-    if (DECL.etat === "pause") { DECL.jeton++; speechSynthesis.cancel(); declDire(DECL.i); return; }
-    DECL.morceaux = declMorceaux(); DECL.jeton++; speechSynthesis.cancel(); declDire(0);
+    if (DECL.etat === "lecture") { declPause(); return; }
+    if (DECL.etat === "pause") { DECL.jeton++; if (!estNatif()) speechSynthesis.cancel(); declLire(DECL.i); return; }
+    DECL.morceaux = declMorceaux(); DECL.jeton++; if (!estNatif()) speechSynthesis.cancel(); declLire(0);
   });
   document.getElementById("declStop").addEventListener("click", declArreter);
   document.getElementById("declVitesse").addEventListener("change", (e) => {
     DECL.vitesse = Number(e.target.value) || 1;
-    if (DECL.etat === "lecture") { const i = DECL.i; DECL.jeton++; speechSynthesis.cancel(); declDire(i); }
+    if (DECL.etat === "lecture") { const i = DECL.i; DECL.jeton++; if (estNatif()) pauseNatif().catch(() => {}).then(() => declLire(i)); else { speechSynthesis.cancel(); declLire(i); } }
   });
-  window.addEventListener("pagehide", () => { if ("speechSynthesis" in window) speechSynthesis.cancel(); });
+  window.addEventListener("pagehide", () => { if (!estNatif() && "speechSynthesis" in window) speechSynthesis.cancel(); });
   renderDeclaration();
+}
+
+// ─────────────────────────────────────────────────────────────
+// RAPPELS (3e) : notifications programmées sur le téléphone (application Android), sans serveur.
+// Dans un navigateur ordinaire, la prochaine rencontre s'affiche à l'accueil.
+// ─────────────────────────────────────────────────────────────
+const RAP_CLE = "abba_mea_rappels";
+const ID_RAP = { veille: 5101, matin: 5102, grille: 5103 };
+let _lnMea = null;
+const lnMea = () => {
+  const C = window.Capacitor; if (!C || !estNatif()) return null;
+  if (_lnMea) return _lnMea;
+  try { _lnMea = typeof C.registerPlugin === "function" ? C.registerPlugin("LocalNotifications") : C.Plugins?.LocalNotifications; } catch (e) { _lnMea = C.Plugins?.LocalNotifications || null; }
+  return _lnMea;
+};
+function lireRappels() {
+  const base = { rencontre: true, grille: false, heure: "20:00" };
+  try { return { ...base, ...JSON.parse(localStorage.getItem(RAP_CLE) || "{}") }; } catch (e) { return base; }
+}
+// Date (AAAA-MM-JJ) de la prochaine rencontre fixée dans la dernière rencontre enregistrée
+function prochaineRencontreDate() {
+  for (let i = MOIS_KEYS.length - 1; i >= 0; i--) { const d = MY_RENCONTRES[MOIS_KEYS[i]]; if (d?.verrouille && d.prochaineDate) return d.prochaineDate; }
+  return null;
+}
+function afficherProchaineRencontre() {
+  const el = document.getElementById("accueilProchaine"); if (!el) return;
+  const d = prochaineRencontreDate();
+  if (!d) { el.textContent = "Dès ta première rencontre, fixe avec ton mentor la date de la suivante : elle s'affichera ici."; return; }
+  const j = joursDepuis(d);   // positif = passée
+  const jolie = new Date(d + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  el.textContent = j == null ? jolie : j < 0 ? `${jolie} (dans ${-j} jour${-j > 1 ? "s" : ""})` : j === 0 ? `${jolie} — c'est aujourd'hui !` : `${jolie} — la date est passée : enregistre ta rencontre.`;
+}
+// Programme (ou annule) les notifications. demander = true : on peut afficher la demande d'autorisation
+async function programmerRappels(demander) {
+  const ln = lnMea();
+  if (!estNatif()) return { etat: "navigateur" };
+  if (!ln) return { etat: "mise-a-jour" };
+  const r = lireRappels();
+  try {
+    await ln.cancel({ notifications: Object.values(ID_RAP).map(id => ({ id })) });
+    if (!r.rencontre && !r.grille) return { etat: "off" };
+    let perm = await ln.checkPermissions();
+    if (perm.display !== "granted" && demander) perm = await ln.requestPermissions();
+    if (perm.display !== "granted") return { etat: "bloque" };
+    const liste = [], maintenant = Date.now();
+    const d = prochaineRencontreDate();
+    if (r.rencontre && d) {
+      const veille = new Date(d + "T18:00:00"); veille.setDate(veille.getDate() - 1);
+      const matin = new Date(d + "T07:30:00");
+      if (veille.getTime() > maintenant) liste.push({ id: ID_RAP.veille, title: "ABBA Mise en Action", body: "Demain : rencontre avec ton mentor. Prépare tes victoires, tes défis et tes questions.", schedule: { at: veille, allowWhileIdle: true } });
+      if (matin.getTime() > maintenant) liste.push({ id: ID_RAP.matin, title: "ABBA Mise en Action", body: "Aujourd'hui : rencontre avec ton mentor.", schedule: { at: matin, allowWhileIdle: true } });
+    }
+    if (r.grille) {
+      const [hh, mm] = String(r.heure || "20:00").split(":").map(Number);
+      liste.push({ id: ID_RAP.grille, title: "ABBA Mise en Action", body: "Pense à cocher ta journée : prière, lecture, déclaration…", schedule: { on: { hour: isNaN(hh) ? 20 : hh, minute: isNaN(mm) ? 0 : mm }, allowWhileIdle: true } });
+    }
+    if (liste.length) await ln.schedule({ notifications: liste });
+    return { etat: "ok", nb: liste.length };
+  } catch (e) { console.error("rappels:", e); return { etat: "erreur" }; }
+}
+function setupRappels() {
+  const bouton = document.getElementById("rap-save");
+  if (!bouton || bouton.dataset.bound) return;
+  bouton.dataset.bound = "1";
+  const r = lireRappels();
+  document.getElementById("rap-rencontre").checked = !!r.rencontre;
+  document.getElementById("rap-grille").checked = !!r.grille;
+  document.getElementById("rap-heure").value = r.heure || "20:00";
+  const etat = document.getElementById("rap-etat");
+  if (!estNatif()) etat.textContent = "Les notifications fonctionnent dans l'application Android ABBA Mise en Action. Dans le navigateur, ta prochaine rencontre s'affiche à l'accueil.";
+  bouton.addEventListener("click", async () => {
+    const nouveau = { rencontre: document.getElementById("rap-rencontre").checked, grille: document.getElementById("rap-grille").checked, heure: document.getElementById("rap-heure").value || "20:00" };
+    try { localStorage.setItem(RAP_CLE, JSON.stringify(nouveau)); } catch (e) { /* stockage indisponible */ }
+    const res = await programmerRappels(true);
+    etat.textContent = res.etat === "ok" ? "✓ Rappels enregistrés." : res.etat === "off" ? "Rappels désactivés." : res.etat === "bloque" ? "Les notifications sont bloquées : autorise-les pour ABBA Mise en Action dans les réglages du téléphone, puis réessaie."
+      : res.etat === "mise-a-jour" ? "Cette version de l'application ne gère pas les rappels : installe la dernière version de l'APK."
+      : res.etat === "navigateur" ? "Réglages enregistrés. Les notifications ne fonctionnent que dans l'application Android ; ici, ta prochaine rencontre s'affiche à l'accueil."
+      : "Impossible de programmer les rappels pour le moment.";
+  });
 }
 
 const RETARD_JOURS = 60;   // « deux mois » sans rencontre confirmée
