@@ -595,3 +595,12 @@ input[type="range"]{touch-action:pan-y;}
 .decl-text p.tts-now{background:#fff2d6;}
 .decl-pj{background:none;border:0;cursor:pointer;font-size:14px;padding:0 2px;}
 .decl-refs{display:block;font-size:12px;color:var(--ink-soft);margin:2px 0 4px;}
+
+/* ===== Bulle des versets (📎) ===== */
+.bib-fond{position:fixed;inset:0;background:rgba(0,0,0,0.38);z-index:60;display:flex;align-items:flex-end;justify-content:center;}
+.bib-feuille{background:var(--card-bg,#fff);color:var(--ink);width:min(100%,640px);max-height:80vh;overflow-y:auto;border-radius:16px 16px 0 0;padding:14px 16px calc(20px + env(safe-area-inset-bottom));box-shadow:0 -4px 20px rgba(0,0,0,0.25);}
+.bib-feuille-tete{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;}
+.bib-citation{font-style:italic;margin:4px 0 8px;}
+.bib-ref{border-top:1px solid var(--line);padding-top:9px;margin-top:9px;line-height:1.55;}
+.bib-ref-texte{font-size:14px;white-space:pre-line;}
+.bib-feuille select{border:1px solid var(--line);border-radius:7px;padding:8px 10px;font-size:14px;color:var(--ink);background:var(--paper);margin-bottom:4px;max-width:100%;}

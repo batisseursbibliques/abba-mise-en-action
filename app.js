@@ -1838,18 +1838,17 @@ async function loadSuivi() {
 // Pratiques tirées de « Ma journée » (Parcours), du checklist spirituel (ABBA Life) et des disciplines de S13.
 // L'étudiant choisit celles qu'il suit (8 au plus) et peut en ajouter.
 // ─────────────────────────────────────────────────────────────
-const PRATIQUES_PROPOSEES = [
+const PRATIQUES_PROPOSEES = [   // dans l'ordre de la journée ; le bilan du soir reste toujours en dernier
   { id: "decl",       label: "Déclaration matin et soir" },
   { id: "priere",     label: "Prière (matin, après-midi, soir)" },
-  { id: "bible",      label: "Lecture biblique du jour" },
-  { id: "meditation", label: "Méditer un passage" },
-  { id: "bilan",      label: "Bilan du soir" },
+  { id: "bible",      label: "Lecture et méditation biblique" },
   { id: "adoration",  label: "Adoration" },
   { id: "communion",  label: "Communion fraternelle" },
   { id: "service",    label: "Servir ou encourager quelqu’un" },
   { id: "partage",    label: "Partager sa foi" },
   { id: "generosite", label: "Générosité (un don)" },
-  { id: "silence",    label: "Silence et solitude" },
+  { id: "silence",    label: "Silence" },
+  { id: "bilan",      label: "Bilan du soir" },
 ];
 const MAX_PRATIQUES = 15;
 const NB_SEMAINES = 26;
@@ -1859,9 +1858,16 @@ let GRILLE_SEMAINE = null;
 let GRILLE_DIRTY = false;
 let GRILLE_CHOIX_OUVERT = false;
 
+// Remet une liste enregistrée dans l'ordre actuel : libellés à jour, anciennes pratiques retirées, bilan du soir en dernier
+function normaliserPratiques(liste) {
+  const canon = Object.fromEntries(PRATIQUES_PROPOSEES.map((p, i) => [p.id, { ...p, ordre: i }]));
+  const sans = liste.filter(p => p.id !== "meditation" && p.id !== "jeune").map(p => canon[p.id] ? { id: p.id, label: canon[p.id].label } : p);
+  const connus = sans.filter(p => canon[p.id]).sort((x, y) => canon[x.id].ordre - canon[y.id].ordre);
+  const perso = sans.filter(p => !canon[p.id]);
+  return [...connus.filter(p => p.id !== "bilan"), ...perso, ...connus.filter(p => p.id === "bilan")];
+}
 function pratiquesActives() {
-  return (MY_GRILLE.pratiques && MY_GRILLE.pratiques.length) ? MY_GRILLE.pratiques
-    : PRATIQUES_PROPOSEES;
+  return normaliserPratiques((MY_GRILLE.pratiques && MY_GRILLE.pratiques.length) ? MY_GRILLE.pratiques : PRATIQUES_PROPOSEES);
 }
 function debutGrille() {
   const d = MY_PDP?.s1?.dateDebut;
@@ -1987,6 +1993,64 @@ function setupGrille() {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Bulle des versets de référence (📎) — mêmes textes que dans ABBA Parcours : /bible/<version>/<NN>.json
+// ─────────────────────────────────────────────────────────────
+const LIVRES_BIBLE = ["Genèse","Exode","Lévitique","Nombres","Deutéronome","Josué","Juges","Ruth","1 Samuel","2 Samuel","1 Rois","2 Rois","1 Chroniques","2 Chroniques","Esdras","Néhémie","Esther","Job","Psaumes","Proverbes","Ecclésiaste","Cantique des Cantiques","Ésaïe","Jérémie","Lamentations","Ézéchiel","Daniel","Osée","Joël","Amos","Abdias","Jonas","Michée","Nahum","Habacuc","Sophonie","Aggée","Zacharie","Malachie","Matthieu","Marc","Luc","Jean","Actes","Romains","1 Corinthiens","2 Corinthiens","Galates","Éphésiens","Philippiens","Colossiens","1 Thessaloniciens","2 Thessaloniciens","1 Timothée","2 Timothée","Tite","Philémon","Hébreux","Jacques","1 Pierre","2 Pierre","1 Jean","2 Jean","3 Jean","Jude","Apocalypse"];
+const platBible = (x) => String(x).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const BIBLE_LIVRES_CACHE = {};
+function analyserRefBible(ref) {   // « 1 Corinthiens 8:4-6 » → { livre, chapitre, verset, fin }
+  const m = /^(.+?)\s+(\d+)(?:[:.,](\d+)(?:\s*[-–]\s*(\d+))?)?$/.exec(String(ref).trim());
+  if (!m) return null;
+  const i = LIVRES_BIBLE.findIndex(n => platBible(n) === platBible(m[1]));
+  if (i < 0) return null;
+  return { livre: i + 1, chapitre: +m[2], verset: m[3] ? +m[3] : 1, fin: m[3] ? (m[4] ? +m[4] : +m[3]) : Infinity };
+}
+async function chargerLivreBible(version, numero) {
+  const cle = version + "/" + numero;
+  if (BIBLE_LIVRES_CACHE[cle]) return BIBLE_LIVRES_CACHE[cle];
+  const r = await fetch(`/bible/${version}/${String(numero).padStart(2, "0")}.json`);
+  if (!r.ok) throw new Error("indisponible");
+  return (BIBLE_LIVRES_CACHE[cle] = await r.json());
+}
+async function texteRefBible(ref, version) {
+  try {
+    const r = analyserRefBible(ref); if (!r) return "";
+    const livre = await chargerLivreBible(version, r.livre);
+    const vs = livre[r.chapitre - 1] || [];
+    const fin = Math.min(r.fin, vs.length, r.verset + 39);
+    const multi = fin > r.verset;
+    const lignes = [];
+    for (let v = r.verset; v <= fin; v++) if (vs[v - 1]) lignes.push(multi ? `${v} ${vs[v - 1]}` : vs[v - 1]);
+    return lignes.join(" ");
+  } catch (e) { return ""; }
+}
+async function ouvrirVersetsBible(refs, citation) {
+  document.getElementById("bibPanneau")?.remove();
+  let versions = [{ id: "lsg", nom: "Louis Segond 1910" }];
+  try { const idx = await (await fetch("/bible/index.json")).json(); const fr = (idx.versions || []).filter(v => v.langue !== "en"); if (fr.length) versions = fr; } catch (e) { /* version par défaut */ }
+  let version = localStorage.getItem("abba_mea_version_versets");
+  if (!versions.some(v => v.id === version)) version = versions[0].id;
+  const textes = {};
+  const fond = document.createElement("div");
+  fond.className = "bib-fond"; fond.id = "bibPanneau"; fond.setAttribute("role", "dialog");
+  const dessiner = () => {
+    fond.innerHTML = `<div class="bib-feuille">
+      <div class="bib-feuille-tete"><strong>📎 Versets de référence</strong><button type="button" class="btn-secondary" data-px="fermer" style="padding:6px 10px;font-size:13px;">Fermer ✕</button></div>
+      <div class="small bib-citation">${escapeAttr(citation)}</div>
+      ${versions.length > 1 ? `<select data-px="version" aria-label="Version de la Bible">${versions.map(v => `<option value="${escapeAttr(v.id)}" ${v.id === version ? "selected" : ""}>${escapeAttr(v.nom)}</option>`).join("")}</select>` : ""}
+      ${refs.map(r => `<div class="bib-ref"><strong>${escapeAttr(r)}</strong><div class="bib-ref-texte">${textes[r] === undefined ? "…" : (textes[r] ? escapeAttr(textes[r]) : `<span class="small">Texte indisponible : vérifie ta connexion.</span>`)}</div></div>`).join("")}
+    </div>`;
+  };
+  const charger = () => refs.forEach(r => texteRefBible(r, version).then(t => { if (document.body.contains(fond)) { textes[r] = t; dessiner(); } }));
+  fond.addEventListener("click", (e) => { if (e.target === fond || e.target.closest('[data-px="fermer"]')) fond.remove(); });
+  fond.addEventListener("change", (e) => {
+    if (e.target.dataset.px === "version") { version = e.target.value; localStorage.setItem("abba_mea_version_versets", version); Object.keys(textes).forEach(k => delete textes[k]); dessiner(); charger(); }
+  });
+  document.body.appendChild(fond);
+  dessiner(); charger();
+}
+
+// ─────────────────────────────────────────────────────────────
 // ONGLET DISCIPLINE — bascule Grille / Déclaration
 // ─────────────────────────────────────────────────────────────
 // Déclaration principale (même texte que dans ABBA Parcours), à lire ou à écouter (voix de l'appareil, gratuite)
@@ -2000,7 +2064,7 @@ function renderDeclaration() {
   document.getElementById("declTitre").textContent = d.titre || "Ma déclaration principale";
   document.getElementById("declSous").textContent = "L'identité du Bâtisseur. À dire chaque matin et chaque soir.";
   zone.innerHTML = declParagraphes().map((p, i) => `<p id="decl-p-${i}">${p.map((ph, j) =>
-    `${escapeAttr(ph.t).replace(/\{nom\}/g, "<strong>" + escapeAttr(declNom()) + "</strong>")}${(ph.refs || []).length ? `<button type="button" class="decl-pj" data-pj="${i}.${j}" aria-label="Versets de référence" title="${escapeAttr(ph.refs.join(", "))}">📎</button><span class="decl-refs" id="decl-r-${i}-${j}" hidden>${escapeAttr(ph.refs.join(" · "))}</span>` : ""} `).join("")}</p>`).join("");
+    `${escapeAttr(ph.t).replace(/\{nom\}/g, "<strong>" + escapeAttr(declNom()) + "</strong>")}${(ph.refs || []).length ? `<button type="button" class="decl-pj" data-pj="${i}.${j}" aria-label="Versets de référence : ${escapeAttr(ph.refs.join(", "))}" title="${escapeAttr(ph.refs.join(", "))}">📎</button>` : ""} `).join("")}</p>`).join("");
 }
 function declMorceaux() {
   const out = [];
@@ -2054,8 +2118,9 @@ function setupDiscipline() {
   }));
   document.getElementById("declTexte").addEventListener("click", (e) => {
     const b = e.target.closest(".decl-pj"); if (!b) return;
-    const [i, j] = b.dataset.pj.split(".");
-    const r = document.getElementById(`decl-r-${i}-${j}`); if (r) r.hidden = !r.hidden;
+    const [i, j] = b.dataset.pj.split(".").map(Number);
+    const ph = (declParagraphes()[i] || [])[j]; if (!ph) return;
+    ouvrirVersetsBible(ph.refs || [], String(ph.t || "").replace(/\{nom\}/g, declNom()));
   });
   document.getElementById("declPlay").addEventListener("click", () => {
     if (!("speechSynthesis" in window)) { document.getElementById("declMsg").textContent = "Ton appareil ne propose pas la lecture à voix haute."; return; }
