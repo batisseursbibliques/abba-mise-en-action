@@ -356,6 +356,8 @@ async function onAuthChanged(user) {
 
   // Charger profil utilisateur
   const profile = await window.AbbaSync.getUserProfile(user.uid) || {};
+  window.MY_NOM_AFFICHE = [profile.prenom, profile.nom].filter(Boolean).join(" ");
+  if (typeof renderDeclaration === "function") renderDeclaration();
   document.getElementById("accueilSalut").textContent =
     profile.prenom ? `Bienvenue, ${profile.prenom} 👋` : "Phase 2 — Mise en Action";
 
@@ -399,6 +401,7 @@ async function onAuthChanged(user) {
   // Grille hebdomadaire
   if (unsubGrille) unsubGrille();
   setupGrille();
+  setupDiscipline();
   unsubGrille = window.AbbaSync.watchMyGrille(user.uid, (data) => {
     MY_GRILLE = data || { pratiques: null, semaines: {} };
     if (!GRILLE_DIRTY) renderGrille();   // on ne redessine pas pendant que l'étudiant coche
@@ -1841,7 +1844,6 @@ const PRATIQUES_PROPOSEES = [
   { id: "bible",      label: "Lecture biblique du jour" },
   { id: "meditation", label: "Méditer un passage" },
   { id: "bilan",      label: "Bilan du soir" },
-  { id: "jeune",      label: "Jeûne" },
   { id: "adoration",  label: "Adoration" },
   { id: "communion",  label: "Communion fraternelle" },
   { id: "service",    label: "Servir ou encourager quelqu’un" },
@@ -1849,8 +1851,7 @@ const PRATIQUES_PROPOSEES = [
   { id: "generosite", label: "Générosité (un don)" },
   { id: "silence",    label: "Silence et solitude" },
 ];
-const PRATIQUES_DEFAUT = ["decl", "priere", "bible", "meditation", "bilan"];
-const MAX_PRATIQUES = 8;
+const MAX_PRATIQUES = 15;
 const NB_SEMAINES = 26;
 const JOURS_COURTS = ["L", "M", "M", "J", "V", "S", "D"];
 let MY_GRILLE = { pratiques: null, semaines: {} };
@@ -1860,7 +1861,7 @@ let GRILLE_CHOIX_OUVERT = false;
 
 function pratiquesActives() {
   return (MY_GRILLE.pratiques && MY_GRILLE.pratiques.length) ? MY_GRILLE.pratiques
-    : PRATIQUES_PROPOSEES.filter(p => PRATIQUES_DEFAUT.includes(p.id));
+    : PRATIQUES_PROPOSEES;
 }
 function debutGrille() {
   const d = MY_PDP?.s1?.dateDebut;
@@ -1879,6 +1880,10 @@ function semaineCourante() {
 function fmtJM(d) { return d ? d.getDate() + "/" + (d.getMonth() + 1) : ""; }
 
 function renderGrille() {
+  try { renderGrilleCorps(); }
+  catch (e) { console.error("grille:", e); const z = document.getElementById("grilleZone"); if (z) z.innerHTML = `<p class="auth-error">La grille n'a pas pu s'afficher (${escapeAttr(e.message)}). Ferme puis rouvre l'application.</p>`; }
+}
+function renderGrilleCorps() {
   const zone = document.getElementById("grilleZone");
   if (!zone) return;
   if (GRILLE_SEMAINE == null) GRILLE_SEMAINE = semaineCourante();
@@ -1901,9 +1906,9 @@ function renderGrille() {
     ${debut ? "" : `<p class="settings-hint">Les dates apparaîtront quand tu auras renseigné la date de début dans l’étape S1 du PDP.</p>`}
     <div class="gr-wrap"><table class="gr-table"><thead><tr><th class="gr-label">Pratiques</th>${entetes}</tr></thead><tbody>${lignes}</tbody></table></div>
     <p class="settings-hint" id="gr-pct"></p>
-    <button type="button" class="link-btn" id="gr-choix-btn">${GRILLE_CHOIX_OUVERT ? "Fermer le choix des pratiques" : "✎ Choisir mes pratiques"}</button>
+    <button type="button" class="link-btn" id="gr-choix-btn">${GRILLE_CHOIX_OUVERT ? "Fermer la liste" : "✎ Modifier ma liste de pratiques"}</button>
     <div id="gr-choix" ${GRILLE_CHOIX_OUVERT ? "" : "hidden"}>
-      <p class="settings-hint">Choisis jusqu’à ${MAX_PRATIQUES} pratiques à cocher chaque jour. Tu peux ajouter les tiennes.</p>
+      <p class="settings-hint">Décoche celles que tu ne veux pas suivre, ou ajoute les tiennes (${MAX_PRATIQUES} au plus).</p>
       ${PRATIQUES_PROPOSEES.concat(prat.filter(p => !PRATIQUES_PROPOSEES.some(q => q.id === p.id))).map(p =>
         `<label class="check-item"><input type="checkbox" class="gr-prat" value="${escapeAttr(p.id)}" data-label="${escapeAttr(p.label)}" ${prat.some(q => q.id === p.id) ? "checked" : ""}> ${escapeAttr(p.label)}</label>`).join("")}
       <div style="display:flex;gap:6px;margin-top:6px;">
@@ -1942,6 +1947,7 @@ function setupGrille() {
   const zone = document.getElementById("grilleZone");
   if (!zone || zone.dataset.bound) return;
   zone.dataset.bound = "1";
+  renderGrille();   // la grille s'affiche tout de suite, sans attendre le réseau
   zone.addEventListener("input", () => { GRILLE_DIRTY = true; });
   zone.addEventListener("change", (e) => {
     if (e.target.id === "gr-semaine") { GRILLE_SEMAINE = Number(e.target.value); GRILLE_DIRTY = false; renderGrille(); return; }
@@ -1949,7 +1955,7 @@ function setupGrille() {
   });
   zone.addEventListener("click", async (e) => {
     const id = e.target.id;
-    if (id === "gr-choix-btn") { GRILLE_CHOIX_OUVERT = !GRILLE_CHOIX_OUVERT; document.getElementById("gr-choix").hidden = !GRILLE_CHOIX_OUVERT; e.target.textContent = GRILLE_CHOIX_OUVERT ? "Fermer le choix des pratiques" : "✎ Choisir mes pratiques"; }
+    if (id === "gr-choix-btn") { GRILLE_CHOIX_OUVERT = !GRILLE_CHOIX_OUVERT; document.getElementById("gr-choix").hidden = !GRILLE_CHOIX_OUVERT; e.target.textContent = GRILLE_CHOIX_OUVERT ? "Fermer la liste" : "✎ Modifier ma liste de pratiques"; }
     else if (id === "gr-perso-btn") {
       const inp = document.getElementById("gr-perso"); const t = inp.value.trim(); if (!t) return;
       const pid = "perso-" + Date.now().toString(36);
@@ -1978,6 +1984,93 @@ function setupGrille() {
       } catch (e2) { console.error(e2); msg.textContent = "Impossible d’enregistrer. Vérifie ta connexion et réessaie."; }
     }
   });
+}
+
+// ─────────────────────────────────────────────────────────────
+// ONGLET DISCIPLINE — bascule Grille / Déclaration
+// ─────────────────────────────────────────────────────────────
+// Déclaration principale (même texte que dans ABBA Parcours), à lire ou à écouter (voix de l'appareil, gratuite)
+const DECL = { etat: "stop", i: 0, jeton: 0, morceaux: [], vitesse: 1 };
+function declNom() { return (window.MY_NOM_AFFICHE || "").trim() || "(ton nom)"; }
+function declParagraphes() { return (window.DECLARATION && window.DECLARATION.paragraphes) || []; }
+function renderDeclaration() {
+  const zone = document.getElementById("declTexte"); if (!zone) return;
+  const d = window.DECLARATION;
+  if (!d) { zone.innerHTML = "<p class='settings-hint'>La déclaration n'est pas disponible pour le moment.</p>"; return; }
+  document.getElementById("declTitre").textContent = d.titre || "Ma déclaration principale";
+  document.getElementById("declSous").textContent = "L'identité du Bâtisseur. À dire chaque matin et chaque soir.";
+  zone.innerHTML = declParagraphes().map((p, i) => `<p id="decl-p-${i}">${p.map((ph, j) =>
+    `${escapeAttr(ph.t).replace(/\{nom\}/g, "<strong>" + escapeAttr(declNom()) + "</strong>")}${(ph.refs || []).length ? `<button type="button" class="decl-pj" data-pj="${i}.${j}" aria-label="Versets de référence" title="${escapeAttr(ph.refs.join(", "))}">📎</button><span class="decl-refs" id="decl-r-${i}-${j}" hidden>${escapeAttr(ph.refs.join(" · "))}</span>` : ""} `).join("")}</p>`).join("");
+}
+function declMorceaux() {
+  const out = [];
+  declParagraphes().forEach((p, i) => p.forEach(ph => {
+    const t = String(ph.t || "").replace(/\{nom\}/g, declNom()).replace(/\s+/g, " ").trim();
+    t.split(/(?<=[.!?…:;])\s+/).forEach(x => { if (x) out.push({ t: x, p: i }); });
+  }));
+  return out;
+}
+function declVoix() {
+  const vs = (window.speechSynthesis && speechSynthesis.getVoices()) || [];
+  const fr = vs.filter(v => (v.lang || "").toLowerCase().startsWith("fr"));
+  return fr.find(v => /fr[-_]FR/i.test(v.lang)) || fr[0] || null;
+}
+function declMarquer() {
+  document.querySelectorAll("#declTexte .tts-now").forEach(e => e.classList.remove("tts-now"));
+  if (DECL.etat !== "lecture") return;
+  const m = DECL.morceaux[DECL.i]; if (!m) return;
+  const el = document.getElementById("decl-p-" + m.p);
+  if (el) { el.classList.add("tts-now"); const r = el.getBoundingClientRect(); if (r.top < 90 || r.bottom > window.innerHeight * 0.65) el.scrollIntoView({ block: "center", behavior: "smooth" }); }
+}
+function declBoutons() {
+  const b = document.getElementById("declPlay"); if (!b) return;
+  b.textContent = DECL.etat === "lecture" ? "⏸ Pause" : (DECL.etat === "pause" ? "▶ Reprendre" : "▶ Écouter");
+}
+function declDire(i) {
+  const jeton = DECL.jeton;
+  if (i >= DECL.morceaux.length) { declArreter(); return; }
+  DECL.i = i; DECL.etat = "lecture"; declBoutons(); declMarquer();
+  const u = new SpeechSynthesisUtterance(DECL.morceaux[i].t);
+  u.lang = "fr-FR"; u.rate = DECL.vitesse;
+  const v = declVoix(); if (v) u.voice = v;
+  u.onend = () => { if (jeton === DECL.jeton && DECL.etat === "lecture") declDire(i + 1); };
+  u.onerror = (e) => { if (jeton === DECL.jeton && e.error !== "canceled" && e.error !== "interrupted") { document.getElementById("declMsg").textContent = "La lecture à voix haute n'a pas pu démarrer sur cet appareil."; declArreter(); } };
+  speechSynthesis.speak(u);
+}
+function declArreter() {
+  DECL.jeton++; DECL.etat = "stop"; DECL.i = 0;
+  if ("speechSynthesis" in window) speechSynthesis.cancel();
+  declBoutons(); declMarquer();
+}
+function setupDiscipline() {
+  const panel = document.getElementById("panel-discipline");
+  if (!panel || panel.dataset.bound) return;
+  panel.dataset.bound = "1";
+  panel.querySelectorAll(".seg-btn").forEach(b => b.addEventListener("click", () => {
+    panel.querySelectorAll(".seg-btn").forEach(x => x.classList.toggle("active", x === b));
+    document.getElementById("seg-grille").hidden = b.dataset.seg !== "grille";
+    document.getElementById("seg-declaration").hidden = b.dataset.seg !== "declaration";
+    if (b.dataset.seg === "declaration") renderDeclaration();
+  }));
+  document.getElementById("declTexte").addEventListener("click", (e) => {
+    const b = e.target.closest(".decl-pj"); if (!b) return;
+    const [i, j] = b.dataset.pj.split(".");
+    const r = document.getElementById(`decl-r-${i}-${j}`); if (r) r.hidden = !r.hidden;
+  });
+  document.getElementById("declPlay").addEventListener("click", () => {
+    if (!("speechSynthesis" in window)) { document.getElementById("declMsg").textContent = "Ton appareil ne propose pas la lecture à voix haute."; return; }
+    document.getElementById("declMsg").textContent = "";
+    if (DECL.etat === "lecture") { const i = DECL.i; DECL.jeton++; speechSynthesis.cancel(); DECL.etat = "pause"; DECL.i = i; declBoutons(); declMarquer(); return; }
+    if (DECL.etat === "pause") { DECL.jeton++; speechSynthesis.cancel(); declDire(DECL.i); return; }
+    DECL.morceaux = declMorceaux(); DECL.jeton++; speechSynthesis.cancel(); declDire(0);
+  });
+  document.getElementById("declStop").addEventListener("click", declArreter);
+  document.getElementById("declVitesse").addEventListener("change", (e) => {
+    DECL.vitesse = Number(e.target.value) || 1;
+    if (DECL.etat === "lecture") { const i = DECL.i; DECL.jeton++; speechSynthesis.cancel(); declDire(i); }
+  });
+  window.addEventListener("pagehide", () => { if ("speechSynthesis" in window) speechSynthesis.cancel(); });
+  renderDeclaration();
 }
 
 const RETARD_JOURS = 60;   // « deux mois » sans rencontre confirmée

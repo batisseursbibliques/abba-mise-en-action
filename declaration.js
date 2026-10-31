@@ -1,0 +1,271 @@
+// Déclaration principale du Bâtisseur — copie du texte de ABBA-Parcours (content/declaration.json). {nom} est remplacé par le nom de la personne.
+window.DECLARATION = {
+ "titre": "Ma déclaration principale",
+ "sous": "L'identité du Bâtisseur. À dire chaque matin et chaque soir, jusqu'à la fin de ta formation.",
+ "paragraphes": [
+  [
+   {
+    "t": "Je suis {nom}. Je suis enfant de Dieu en Christ.",
+    "refs": [
+     "Jean 1:12",
+     "Jean 20:31",
+     "Actes 4:12",
+     "Galates 3:26",
+     "1 Jean 5:13"
+    ]
+   }
+  ],
+  [
+   {
+    "t": "Le Seigneur mon Dieu est l'unique et véritable Dieu.",
+    "refs": [
+     "Marc 12:29",
+     "1 Corinthiens 8:4-6",
+     "1 Timothée 2:5",
+     "Éphésiens 4:5-6"
+    ]
+   },
+   {
+    "t": "J'aime le Seigneur mon Dieu de tout mon cœur, de toute mon âme, de toute ma pensée et de toute ma force.",
+    "refs": [
+     "Marc 12:30",
+     "1 Pierre 1:8"
+    ]
+   }
+  ],
+  [
+   {
+    "t": "La bénédiction de Dieu est sur moi.",
+    "refs": [
+     "Éphésiens 1:3",
+     "Galates 3:13-14",
+     "Genèse 12:2-3"
+    ]
+   },
+   {
+    "t": "Je ne suis pas maudit et je ne peux pas l'être.",
+    "refs": [
+     "Nombres 22:12"
+    ]
+   }
+  ],
+  [
+   {
+    "t": "Je suis de la famille de Dieu.",
+    "refs": [
+     "Éphésiens 2:19-22"
+    ]
+   },
+   {
+    "t": "J'aime mes frères et sœurs en Christ, et je sais qu'ils m'aiment aussi, car l'amour de Dieu a été répandu dans nos cœurs par le Saint-Esprit qui nous a été donné.",
+    "refs": [
+     "Romains 5:5"
+    ]
+   },
+   {
+    "t": "J'aime aussi tous les hommes comme moi-même. Et j'ai l'assurance qu'ils ne sauraient me faire un quelconque mal. Le Seigneur est avec moi.",
+    "refs": [
+     "Hébreux 13:6",
+     "Psaumes 56:4",
+     "Psaumes 118:6"
+    ]
+   }
+  ],
+  [
+   {
+    "t": "En toutes circonstances et situations, je reste calme, serein et confiant en mon Dieu.",
+    "refs": [
+     "Ésaïe 28:16",
+     "Ésaïe 30:15"
+    ]
+   },
+   {
+    "t": "Il est mon Père",
+    "refs": [
+     "1 Jean 3:1-2"
+    ]
+   },
+   {
+    "t": "et il est au contrôle de tout.",
+    "refs": [
+     "Deutéronome 32:39",
+     "Psaumes 46:10"
+    ]
+   },
+   {
+    "t": "Il fait abonder envers moi toute grâce excellente,",
+    "refs": [
+     "2 Corinthiens 9:8",
+     "Jacques 1:16-18",
+     "Jacques 4:6-7"
+    ]
+   },
+   {
+    "t": "il pourvoit à mes besoins avec richesse et gloire,",
+    "refs": [
+     "Philippiens 4:19-20"
+    ]
+   },
+   {
+    "t": "et il fait concourir toutes choses pour mon bien.",
+    "refs": [
+     "Romains 8:28"
+    ]
+   },
+   {
+    "t": "Dieu est pour moi,",
+    "refs": [
+     "Jérémie 32:27",
+     "Ésaïe 51:15-16",
+     "Psaumes 50:7"
+    ]
+   },
+   {
+    "t": "et je suis à Dieu entièrement.",
+    "refs": [
+     "Ésaïe 43:1-3"
+    ]
+   },
+   {
+    "t": "Tout va bien et tout ira toujours bien.",
+    "refs": []
+   }
+  ],
+  [
+   {
+    "t": "J'ai été crucifié avec Christ.",
+    "refs": [
+     "Galates 2:20"
+    ]
+   },
+   {
+    "t": "Le corps du péché est mort.",
+    "refs": [
+     "Romains 6:6"
+    ]
+   },
+   {
+    "t": "Maintenant, toutes mes facultés et membres servent la justice de Dieu.",
+    "refs": [
+     "Romains 6:13",
+     "Romains 6:19"
+    ]
+   },
+   {
+    "t": "J'ai Jésus-Christ pour maître et seigneur. Je reste sa propriété dans le meilleur et malgré le pire.",
+    "refs": [
+     "Romains 8:35-39"
+    ]
+   }
+  ],
+  [
+   {
+    "t": "La grâce de Dieu est fraîche et abondante sur moi.",
+    "refs": [
+     "Éphésiens 1:6-8"
+    ]
+   },
+   {
+    "t": "Je suis fortifié par sa force toute puissante.",
+    "refs": [
+     "2 Corinthiens 12:9-10"
+    ]
+   },
+   {
+    "t": "J'ai la sagesse, la connaissance, la compréhension et l'intelligence, car j'ai la pensée de Jésus-Christ.",
+    "refs": [
+     "1 Corinthiens 2:16"
+    ]
+   }
+  ],
+  [
+   {
+    "t": "Je suis conduit par le Saint-Esprit.",
+    "refs": [
+     "Romains 8:14"
+    ]
+   },
+   {
+    "t": "Je ne ferai pas d'erreur.",
+    "refs": [
+     "Jean 16:13"
+    ]
+   },
+   {
+    "t": "Je ne raterai pas ma cible.",
+    "refs": []
+   },
+   {
+    "t": "Le Saint-Esprit me conduit par l'éclat de Sa lumière sur mon chemin.",
+    "refs": [
+     "Job 22:28",
+     "Proverbes 4:18",
+     "Ésaïe 42:16"
+    ]
+   }
+  ],
+  [
+   {
+    "t": "Je suis revêtu des vêtements du salut. Je suis couvert de la robe (manteau) de justice.",
+    "refs": [
+     "Ésaïe 61:10"
+    ]
+   },
+   {
+    "t": "Mon Dieu m'établit par le parfum de sa présence.",
+    "refs": [
+     "Genèse 26:24",
+     "Genèse 28:15",
+     "Ésaïe 41:10",
+     "Actes 18:10",
+     "Matthieu 28:20"
+    ]
+   },
+   {
+    "t": "Je suis une merveille et un prodige,",
+    "refs": [
+     "Psaumes 139:14",
+     "Ésaïe 8:18"
+    ]
+   },
+   {
+    "t": "parce que je suis un porteur de la gloire de Dieu.",
+    "refs": [
+     "2 Corinthiens 4:7"
+    ]
+   }
+  ],
+  [
+   {
+    "t": "Je marche dans la puissance.",
+    "refs": [
+     "Psaumes 68:28"
+    ]
+   },
+   {
+    "t": "Je marche en autorité.",
+    "refs": [
+     "Luc 10:19"
+    ]
+   },
+   {
+    "t": "Je marche dans la domination.",
+    "refs": [
+     "Psaumes 110:2"
+    ]
+   },
+   {
+    "t": "J'impacte exceptionnellement mon monde.",
+    "refs": [
+     "Psaumes 2:8-9"
+    ]
+   },
+   {
+    "t": "J'avance en conquérant au nom puissant de Jésus-Christ.",
+    "refs": [
+     "Romains 8:37"
+    ]
+   }
+  ]
+ ]
+};

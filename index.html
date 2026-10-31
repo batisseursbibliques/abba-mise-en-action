@@ -63,6 +63,7 @@ if ('serviceWorker' in navigator) {
     <button class="tab active" data-tab="accueil">Accueil</button>
     <button class="tab" data-tab="pdp">Mon PDP</button>
     <button class="tab" data-tab="rencontres">Rencontres</button>
+    <button class="tab" data-tab="discipline">Discipline</button>
     <button class="tab" data-tab="bilan">Bilan</button>
     <button class="tab mentor-only admin-only" data-tab="suivi" id="tabSuivi" style="display:none;">Suivi</button>
     <button class="tab admin-only" data-tab="admin" id="tabAdmin" style="display:none;">Admin</button>
@@ -533,13 +534,34 @@ if ('serviceWorker' in navigator) {
 
       <!-- Historique des mois verrouillés -->
       <div id="rencontreHistorique"></div>
+    </section>
 
-      <!-- Grille hebdomadaire (annexe B) -->
-      <details class="card" id="grilleCard" style="margin-top:16px;">
-        <summary style="cursor:pointer;font-weight:600;">📅 Ma grille hebdomadaire (26 semaines)</summary>
-        <p class="settings-hint" style="margin-top:8px;">Chaque jour, coche les pratiques tenues. En fin de semaine, note ta semaine, écris une victoire et un défi.</p>
-        <div id="grilleZone"></div>
-      </details>
+    <!-- ================= DISCIPLINE (grille hebdomadaire + déclaration) ================= -->
+    <section class="panel" id="panel-discipline">
+      <div class="panel-head"><h1>Discipline</h1></div>
+      <div class="seg-switch">
+        <button type="button" class="seg-btn active" data-seg="grille">📅 Ma grille</button>
+        <button type="button" class="seg-btn" data-seg="declaration">✦ Ma déclaration</button>
+      </div>
+
+      <div class="card" id="seg-grille">
+        <p class="settings-hint">Chaque jour, coche ce que tu as fait. En fin de semaine, note ta semaine, écris une victoire et un défi. 26 semaines.</p>
+        <div id="grilleZone"><p class="settings-hint">Chargement…</p></div>
+      </div>
+
+      <div class="card" id="seg-declaration" hidden>
+        <p class="eyebrow" id="declTitre">Ma déclaration principale</p>
+        <p class="settings-hint" id="declSous"></p>
+        <div class="decl-player">
+          <button type="button" class="btn-primary" id="declPlay">▶ Écouter</button>
+          <button type="button" class="btn-secondary" id="declStop">■ Arrêter</button>
+          <select id="declVitesse" class="text-input" aria-label="Vitesse de lecture">
+            <option value="0.8">Lent</option><option value="1" selected>Normal</option><option value="1.2">Rapide</option>
+          </select>
+        </div>
+        <p class="settings-hint" id="declMsg"></p>
+        <div id="declTexte" class="decl-text"></div>
+      </div>
     </section>
 
     <!-- ================= BILAN ================= -->
@@ -672,6 +694,10 @@ if ('serviceWorker' in navigator) {
       <svg viewBox="0 0 24 24" width="20" height="20"><rect x="4" y="4" width="16" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 2 V6 M16 2 V6 M4 10 H20" stroke="currentColor" stroke-width="1.5"/></svg>
       <span>Rencontres</span>
     </button>
+    <button class="bnav-btn" data-tab="discipline">
+      <svg viewBox="0 0 24 24" width="20" height="20"><rect x="4" y="4" width="16" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 12 L11 15 L16 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Discipline</span>
+    </button>
     <button class="bnav-btn" data-tab="bilan">
       <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 20 V10 M12 20 V4 M18 20 V13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
       <span>Bilan</span>
@@ -694,6 +720,7 @@ if ('serviceWorker' in navigator) {
 
 <script src="voies.js"></script>
 <script src="ministeres.js"></script>
+<script src="declaration.js"></script>
 <script type="module" src="sync.js"></script>
 <script type="module" src="app.js"></script>
 </body>

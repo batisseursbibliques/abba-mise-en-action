@@ -583,3 +583,15 @@ input[type="range"]{touch-action:pan-y;}
 .gr-table td{text-align:center;padding:6px 0;border-top:1px dashed var(--line);}
 .gr-table .gr-label{width:38%;text-align:left;padding-right:4px;overflow-wrap:anywhere;}
 .gr-case{width:20px;height:20px;accent-color:var(--navy);}
+
+/* ===== Onglet Discipline ===== */
+[hidden]{display:none !important;}
+.seg-switch{display:flex;gap:8px;margin:0 0 12px;}
+.seg-btn{flex:1;padding:10px 8px;border:1px solid var(--line);border-radius:10px;background:var(--paper);font:inherit;font-size:14px;color:var(--ink-soft);cursor:pointer;}
+.seg-btn.active{background:var(--navy);color:#fff;border-color:var(--navy);}
+.decl-player{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0;}
+.decl-player .text-input{width:auto;}
+.decl-text p{font-size:16px;line-height:1.65;margin:0 0 14px;padding:4px 6px;border-radius:8px;transition:background .2s;}
+.decl-text p.tts-now{background:#fff2d6;}
+.decl-pj{background:none;border:0;cursor:pointer;font-size:14px;padding:0 2px;}
+.decl-refs{display:block;font-size:12px;color:var(--ink-soft);margin:2px 0 4px;}
