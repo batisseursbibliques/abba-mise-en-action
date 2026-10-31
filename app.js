@@ -392,6 +392,7 @@ async function onAuthChanged(user) {
     updateAccueilPdpHint();
     afficherReprise();
     afficherReperesS3();
+    afficherTestLeadership();
   });
 
   // Rencontres
@@ -843,10 +844,33 @@ function buildS8Leadership() {
       <div class="leadership-row">
         <span class="leadership-label">${comp}</span>
         <input type="number" class="leadership-input text-input" id="s8-lead-${i}"
-          min="1" max="10" placeholder="—" title="${comp}">
+          min="1" max="10" placeholder="—" title="${comp}" readonly tabindex="-1">
       </div>
     `);
   });
+}
+
+// Affiche le résultat du test de leadership (fait dans le Parcours) et le reprend dans le PDP
+async function afficherTestLeadership() {
+  const box = document.getElementById("s8TestCard");
+  if (!box || !CURRENT_USER) return;
+  let r = null;
+  try { r = await window.AbbaSync.getTestLeadership(CURRENT_USER.uid); } catch (e) { r = null; }
+  const lien = `<a class="link-btn" href="../ABBA-Parcours/" style="display:inline-block;margin-top:6px;">Ouvrir le Parcours → module 14.1 → exercice « Mon test de leadership »</a>`;
+  if (!r) {
+    box.innerHTML = `<div class="lead-test vide"><p><strong>Tu n’as pas encore passé le test.</strong></p>
+      <p class="settings-hint">60 affirmations, une quinzaine de minutes. Tu choisis pour chacune le chiffre qui correspond à ta vie réelle. Ensuite, ta note sur 10 pour chaque compétence apparaît ici.</p>${lien}</div>`;
+    return;
+  }
+  const notes = r.notes;
+  const min = Math.min(...notes), moy = (notes.reduce((a, b) => a + b, 0) / notes.length).toFixed(1);
+  const basses = LEADERSHIP_COMPETENCES.filter((_, i) => notes[i] === min);
+  box.innerHTML = `<div class="lead-test"><p><strong>✓ Résultat de ton test de leadership</strong> <span class="settings-hint">(moyenne ${moy}/10)</span></p>
+    <p class="settings-hint">Ton premier chantier : <strong>${escapeAttr(basses.join(", "))}</strong>.</p>
+    <p class="settings-hint">Pour refaire le test et mesurer ta progression, retourne dans le Parcours.</p>${lien}</div>`;
+  LEADERSHIP_COMPETENCES.forEach((_, i) => setVal("s8-lead-" + i, notes[i]));
+  const gardees = MY_PDP?.s8?.leadership || [];
+  if (notes.some((n, i) => Number(gardees[i]) !== n)) savePdp("s8");   // le mentor voit la note du test
 }
 
 // S9 — Total heures
@@ -2562,6 +2586,7 @@ window.showPdpMentor = async function(uid) {
 
       <div class="pdp-mentor-section">
         <h3>S8 — Leadership</h3>
+        <div class="pdp-mentor-row"><dt>Test de leadership (sur 10)</dt><dd>${(d.s8?.leadership || []).some(n => n) ? LEADERSHIP_COMPETENCES.map((c, i) => `${escapeAttr(c)} ${d.s8.leadership[i] || "—"}`).join(" · ") : "pas encore passé"}</dd></div>
         <div class="pdp-mentor-row"><dt>Formations prévues</dt><dd>${escapeAttr(d.s8?.formations) || "—"}</dd></div>
         <div class="pdp-mentor-row"><dt>Modèles</dt><dd>${escapeAttr(d.s8?.modeles) || "—"}</dd></div>
         <div class="pdp-mentor-row"><dt>Opportunités</dt><dd>${escapeAttr(d.s8?.opportunites) || "—"}</dd></div>

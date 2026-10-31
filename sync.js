@@ -440,6 +440,34 @@ function calculerReprise(brut) {
   return out;
 }
 
+// ─── Test de leadership (exercice facultatif du module 14.1 de Parcours) ───
+// 60 affirmations notées de 1 à 3, par groupes de 6 (une compétence = un groupe, dans l'ordre de LEADERSHIP_COMPETENCES).
+// Note sur 10 : le score minimum possible (6) donne 1, le maximum (18) donne 10.
+function calculerLeadership(scores) {
+  if (!scores) return null;
+  const notes = [];
+  for (let g = 0; g < 10; g++) {
+    let tot = 0;
+    for (let k = g * 6 + 1; k <= g * 6 + 6; k++) {
+      const v = Number(scores[String(k)]);
+      if (!(v >= 1 && v <= 3)) return null;   // test incomplet
+      tot += v;
+    }
+    notes.push(Math.max(1, Math.min(10, Math.round((tot - 6) / 12 * 9 + 1))));
+  }
+  return notes;
+}
+// Lit les réponses de l'étudiant (lecture de son propre dossier). Le test refait en mode révision (module déjà validé) prime.
+async function getTestLeadership(uid) {
+  const lire = async (chemin) => { try { const sn = await getDoc(doc(db, ...chemin)); return sn.exists() ? sn.data() : null; } catch (e) { return null; } };
+  const [rev, mod] = await Promise.all([lire(["formation", uid, "revisions", "m14"]), lire(["formation", uid, "modules", "m14"])]);
+  for (const src of [rev, mod]) {
+    const notes = calculerLeadership(src?.exercices?.test_leadership?.scores);
+    if (notes) return { notes };
+  }
+  return null;
+}
+
 // Lit les données du Parcours de l'étudiant (toutes lisibles par lui seul) ; une lecture qui échoue n'empêche pas les autres
 async function getReprise(uid) {
   const lire = async (fn, vide) => { try { return await fn(); } catch (e) { return vide; } };
@@ -529,7 +557,7 @@ async function getMonRoleAdmin(email) {
 window.AbbaSync = {
   normaliserNumero, verifierNumeroCertificat, getMonAcces, getMonPays, reclamerNumero,
   listDemandesAcces, validerDemandeAcces, refuserDemandeAcces, getMonRoleAdmin,
-  getCertificatParcours, estExempte, getReprise, calculerReprise,
+  getCertificatParcours, estExempte, getReprise, calculerReprise, getTestLeadership, calculerLeadership,
   getComptePaiement,
   isAdminEmail,
   logIn, logOut, watchAuth, getUserProfile,
