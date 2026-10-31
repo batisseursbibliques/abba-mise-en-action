@@ -97,8 +97,8 @@ if ('serviceWorker' in navigator) {
       </div>
 
       <div class="card">
-        <p class="eyebrow">📊 Bilan final</p>
-        <p class="settings-hint">Synthèse automatique de ta progression sur 6 mois.</p>
+        <p class="eyebrow">🎓 Mon dossier et bilan</p>
+        <p class="settings-hint">Services communautaires, conditions de certification et synthèse de tes 6 mois.</p>
         <button class="link-btn" data-goto="bilan">Ouvrir Bilan →</button>
       </div>
 
@@ -455,7 +455,7 @@ if ('serviceWorker' in navigator) {
       <div class="pdp-section" id="pdp-s11">
         <div class="card">
           <p class="eyebrow">S11 — Service communautaire : plan</p>
-          <p class="settings-hint">Tu vas rendre un service à ta communauté pendant ces 6 mois. Décris ici ce que tu prévois. Le service réalisé sera enregistré plus tard dans l’application.</p>
+          <p class="settings-hint">Tu vas rendre un service à ta communauté pendant ces 6 mois. Décris ici ce que tu prévois. Quand tu l’auras rendu, tu l’enregistres dans l’onglet « Bilan » (section « Mes services communautaires »), et ton mentor le confirme.</p>
           <label class="field"><span>Zone d’intervention</span>
             <input type="text" id="s11Zone" class="text-input" placeholder="Quartier, village, commune…">
           </label>
@@ -579,9 +579,38 @@ if ('serviceWorker' in navigator) {
     <!-- ================= BILAN ================= -->
     <section class="panel" id="panel-bilan">
       <div class="panel-head">
-        <h1>Bilan final</h1>
+        <h1>Mon dossier et bilan</h1>
       </div>
-      <p class="settings-hint" style="margin:-8px 0 16px;">Synthèse automatique de ta progression sur les 6 mois.</p>
+
+      <!-- ===== Dossier de certification (phase 4) ===== -->
+      <div class="card" id="dossierStatutCard"></div>
+      <div class="card" id="dossierFinalCard" style="display:none;"></div>
+      <div class="card" id="dossierCriteresCard"></div>
+
+      <div class="card" id="servicesCard">
+        <p class="eyebrow">🤝 Mes services communautaires</p>
+        <p class="settings-hint">Un service que tu as réellement rendu à ta communauté pendant ces 6 mois, même petit. Il en faut au moins un, confirmé par ton mentor.</p>
+        <div id="servicesListe"></div>
+        <div id="serviceForm" style="margin-top:12px;">
+          <input type="hidden" id="srvId">
+          <label class="field"><span>Ce que j’ai fait</span>
+            <textarea class="text-input" rows="3" id="srvQuoi" placeholder="Décris le service rendu"></textarea></label>
+          <label class="field"><span>Où et pour qui</span>
+            <input class="text-input" type="text" id="srvOu" placeholder="Quartier, église, groupe de personnes…"></label>
+          <label class="field"><span>Date (ou début)</span>
+            <input class="text-input" type="date" id="srvDate"></label>
+          <label class="field"><span>Nombre de personnes touchées</span>
+            <input class="text-input" type="number" min="0" id="srvPersonnes"></label>
+          <label class="field"><span>Ce que j’ai appris</span>
+            <textarea class="text-input" rows="2" id="srvAppris"></textarea></label>
+          <button class="btn-primary" type="button" id="srvSaveBtn">Enregistrer ce service</button>
+          <button class="btn-secondary" type="button" id="srvCancelBtn" style="display:none;margin-top:6px;">Annuler la modification</button>
+          <p class="auth-error" id="srvErr"></p>
+        </div>
+      </div>
+
+      <p class="eyebrow" style="margin:18px 0 6px;">📊 Bilan final</p>
+      <p class="settings-hint" style="margin:0 0 16px;">Synthèse automatique de ta progression sur les 6 mois.</p>
 
       <div class="card" id="bilanNotDisponible">
         <p class="eyebrow">Bilan pas encore disponible</p>
@@ -620,6 +649,30 @@ if ('serviceWorker' in navigator) {
         <p class="eyebrow">Demandes d’entrée par numéro de certificat</p>
         <p class="settings-hint">Des personnes qui ont suivi le Parcours hors de l’application entrent avec le numéro de leur certificat. Quand le nom du certificat ne correspond pas à celui du compte, la demande attend ici ta validation (coordinateur national du pays, ou PPV).</p>
         <div id="demandesAccesList"></div>
+      </div>
+
+      <!-- Certification des Bâtisseurs (phase 4) -->
+      <div class="card" id="certifCard">
+        <p class="eyebrow">🎓 Certification des Bâtisseurs</p>
+        <p class="settings-hint">Les rencontres en personne où chaque cohorte reçoit ensemble le Certificat du Bâtisseur et la carte de membre. Crée une rencontre (cohorte, date, lieu), puis rattache-y les dossiers validés.</p>
+        <div id="certifListe"></div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px;">
+          <input class="text-input" type="text" id="certNom" placeholder="Cohorte (ex. Cohorte 1 — Cotonou)">
+          <input class="text-input" type="date" id="certDate">
+          <input class="text-input" type="text" id="certLieu" placeholder="Lieu">
+          <button class="btn-primary" type="button" id="certAjouterBtn">Enregistrer cette Certification</button>
+        </div>
+        <p class="auth-error" id="certErr"></p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">📥 Dossiers validés par un mentor, en attente de toi</p>
+        <div id="dossiersAValider"><p class="settings-hint">Chargement…</p></div>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">🎓 Dossiers validés</p>
+        <div id="dossiersValides"><p class="settings-hint">Chargement…</p></div>
       </div>
 
       <!-- Gestion des mentors -->

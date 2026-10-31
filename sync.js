@@ -554,6 +554,66 @@ async function getMonRoleAdmin(email) {
   try { const sn = await getDoc(doc(db, "admins", String(email).toLowerCase())); return sn.exists() ? sn.data() : null; } catch (e) { return null; }
 }
 
+// ============================================================
+// PHASE 4 — SERVICE COMMUNAUTAIRE, JALONS DU PROJET, DOSSIER, CERTIFICATION DES BÂTISSEURS
+// /users/{uid}/priv/mea_services — { services: { id: { quoi, ou, date, personnes, appris, v } } } (écrit par l'étudiant, lu par son mentor)
+// /mea_confirmations/{uid}.services[id] et .jalons[jalonId] — écrits par le mentor seulement
+// /mea_dossiers/{uid} — { mentor: { statut: "valide" | "corrections", ... }, coordo: { statut: "valide", certifId, ... } }
+//     « mentor » écrit par le mentor affecté ; « coordo » écrit par le coordinateur national (ou le PPV)
+// /mea_certifications/{id} — { nom (cohorte), date, lieu } : la date de la Certification des Bâtisseurs, fixée par le coordinateur
+// ============================================================
+function watchMyServices(uid, callback) {
+  return onSnapshot(privRef(uid, "mea_services"), (snap) => callback(snap.exists() ? (snap.data().services || {}) : {}),
+    (err) => { console.error("watch mea_services:", err); callback({}); });
+}
+async function getServicesOf(uid) {
+  const snap = await getDoc(privRef(uid, "mea_services"));
+  return snap.exists() ? (snap.data().services || {}) : {};
+}
+async function saveService(uid, id, data) {
+  await setDoc(privRef(uid, "mea_services"), { services: { [id]: { ...data, updatedAt: serverTimestamp() } }, updatedAt: serverTimestamp() }, { merge: true });
+}
+async function deleteService(uid, id) {
+  await setDoc(privRef(uid, "mea_services"), { services: { [id]: deleteField() }, updatedAt: serverTimestamp() }, { merge: true });
+}
+async function saveConfirmationService(uid, id, data) {
+  await setDoc(doc(db, "mea_confirmations", uid), { services: { [id]: { ...data, at: new Date().toISOString() } } }, { merge: true });
+}
+async function saveConfirmationJalon(uid, jalonId, data) {
+  await setDoc(doc(db, "mea_confirmations", uid), { jalons: { [jalonId]: { ...data, at: new Date().toISOString() } } }, { merge: true });
+}
+function watchMyDossier(uid, callback) {
+  return onSnapshot(doc(db, "mea_dossiers", uid), (snap) => callback(snap.exists() ? snap.data() : {}),
+    (err) => { console.error("watch mea_dossiers:", err); callback({}); });
+}
+async function getDossier(uid) {
+  const snap = await getDoc(doc(db, "mea_dossiers", uid));
+  return snap.exists() ? snap.data() : {};
+}
+async function saveDossierMentor(uid, data) {
+  await setDoc(doc(db, "mea_dossiers", uid), { mentor: { ...data, at: new Date().toISOString() } }, { merge: true });
+}
+async function saveDossierCoordo(uid, data) {
+  await setDoc(doc(db, "mea_dossiers", uid), { coordo: { ...data, at: new Date().toISOString() } }, { merge: true });
+}
+async function loadAllDossiers() {
+  const snap = await getDocs(collection(db, "mea_dossiers"));
+  const out = {}; snap.docs.forEach(d => { out[d.id] = d.data(); });
+  return out;
+}
+async function loadCertifications() {
+  const snap = await getDocs(collection(db, "mea_certifications"));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+async function getCertification(id) {
+  const snap = await getDoc(doc(db, "mea_certifications", id));
+  return snap.exists() ? { id, ...snap.data() } : null;
+}
+async function saveCertification(id, data) {
+  await setDoc(doc(db, "mea_certifications", id), { ...data, updatedAt: serverTimestamp() }, { merge: true });
+}
+async function deleteCertification(id) { await deleteDoc(doc(db, "mea_certifications", id)); }
+
 window.AbbaSync = {
   normaliserNumero, verifierNumeroCertificat, getMonAcces, getMonPays, reclamerNumero,
   listDemandesAcces, validerDemandeAcces, refuserDemandeAcces, getMonRoleAdmin,
@@ -573,4 +633,7 @@ window.AbbaSync = {
   saveSummary, loadAllSummaries, loadMySummaries,
   watchMyPDPOnce: readPDPOnce,
   loadAllUsers,
+  watchMyServices, getServicesOf, saveService, deleteService, saveConfirmationService, saveConfirmationJalon,
+  watchMyDossier, getDossier, saveDossierMentor, saveDossierCoordo, loadAllDossiers,
+  loadCertifications, getCertification, saveCertification, deleteCertification,
 };

@@ -287,8 +287,9 @@ function traduireErreur(err) {
 
 async function onAuthChanged(user) {
   // Nettoyer les listeners
-  [unsubAdmins, unsubPDP, unsubRencontres, unsubConfirmations, unsubGrille, unsubEco, unsubMentors, unsubMyRole].forEach(fn => fn && fn());
-  unsubAdmins = unsubPDP = unsubRencontres = unsubConfirmations = unsubGrille = unsubEco = unsubMentors = unsubMyRole = null;
+  [unsubAdmins, unsubPDP, unsubRencontres, unsubConfirmations, unsubGrille, unsubEco, unsubMentors, unsubMyRole, unsubServices, unsubDossier].forEach(fn => fn && fn());
+  unsubAdmins = unsubPDP = unsubRencontres = unsubConfirmations = unsubGrille = unsubEco = unsubMentors = unsubMyRole = unsubServices = unsubDossier = null;
+  MY_SERVICES = {}; MY_DOSSIER = {};
   MY_ECO = { mois: {} };
   MY_GRILLE = { debut: null, pratiques: null, semaines: {} }; GRILLE_SEMAINE = null; GRILLE_DIRTY = false;
   MY_CONFIRMATIONS = {};
@@ -391,6 +392,7 @@ async function onAuthChanged(user) {
     chargerPdpPreservantBrouillon();
     updatePdpProgress();
     updateAccueilPdpHint();
+    renderDossier();
     afficherReprise();
     afficherReperesS3();
     afficherTestLeadership();
@@ -401,6 +403,7 @@ async function onAuthChanged(user) {
     MY_RENCONTRES = data;
     renderRencontresPanel();
     updateBilan();
+    renderDossier();
   });
   // Grille hebdomadaire
   if (unsubGrille) unsubGrille();
@@ -423,7 +426,14 @@ async function onAuthChanged(user) {
     MY_CONFIRMATIONS = data || {};
     renderRencontresPanel();
     renderEcoListe();
+    renderDossier();
   });
+  // Phase 4 : services communautaires et dossier de certification
+  setupServices();
+  if (unsubServices) unsubServices();
+  unsubServices = window.AbbaSync.watchMyServices(user.uid, (data) => { MY_SERVICES = data || {}; renderDossier(); });
+  if (unsubDossier) unsubDossier();
+  unsubDossier = window.AbbaSync.watchMyDossier(user.uid, (data) => { MY_DOSSIER = data || {}; renderDossier(); });
 }
 
 // Liste complète des mentors : seulement pour les coordinateurs (les règles de sécurité l'exigent aussi)
@@ -630,9 +640,10 @@ function afficherVoie(id) {
     <div class="card">
       <p class="eyebrow">Étapes validées par ton mentor</p>
       <p class="settings-hint">Ton mentor validera ces étapes, ou te demandera de les reprendre, au fil des 6 mois.</p>
-      ${liste(v.jalons.map(j => j.label))}
+      <ul style="margin:4px 0 0 18px;">${v.jalons.map(j => `<li>${j.label} <span data-jalon="${j.id}"></span></li>`).join("")}</ul>
     </div>`;
   majLibellesVoie(v);
+  majJalonsVoie();
 }
 
 function remplirReponsesVoie(reponses) {
@@ -1861,6 +1872,8 @@ async function loadSuivi() {
           onclick="showPdpMentor('${s.uid}')">📋 Voir le PDP</button>
         <button class="btn-secondary" style="font-size:12px;padding:7px 12px;margin-top:8px;width:100%;"
           onclick="showRencontresMentor('${s.uid}')">🗓 Voir et confirmer les rencontres<span id="pend-${s.uid}"></span></button>
+        <button class="btn-secondary" style="font-size:12px;padding:7px 12px;margin-top:8px;width:100%;"
+          onclick="showDossierMentor('${s.uid}')">🎓 Dossier : services, projet et validation</button>
       </div>
     </div>`;
   }).join("")}</div>`;
@@ -2764,6 +2777,7 @@ async function loadAdmin() {
   afficherAlertesCoord();
   ADMIN_OUVERT = true;
   chargerDemandesAcces();
+  chargerCertifications();
   renderMentorsList();
   renderMentorSelect();
   renderAssignSelects();
@@ -2963,3 +2977,353 @@ function getCheck(id) {
   const el = document.getElementById(id);
   return el ? el.checked : false;
 }
+
+// ─────────────────────────────────────────────────────────────
+// PHASE 4 — DOSSIER DE CERTIFICATION
+// Quatre conditions (voulues par le PPV) : PDP à 80 % avec les étapes obligatoires, 4 rencontres sur 6 confirmées
+// dont celle du mois 6, au moins un service communautaire confirmé, avancement du projet validé par le mentor.
+// Puis : le mentor valide, le coordinateur national valide, « Dossier validé, certificat à venir ».
+// Rien n'est automatique : seuls le mentor et le coordinateur valident.
+// ─────────────────────────────────────────────────────────────
+let MY_SERVICES = {};
+let MY_DOSSIER  = {};
+let unsubServices = null;
+let unsubDossier  = null;
+let SRV_EN_EDITION = "";
+let SERVICES_PRET = false;
+
+function voieDe(pdp) { return voieParId((pdp && pdp.s6 && pdp.s6.voie) || (window.VOIES_ANCIENNES || {})[pdp && pdp.s6 && pdp.s6.typeProjet]); }
+
+function fmtDateLongue(iso) {
+  if (!iso) return "";
+  const d = new Date(String(iso).slice(0, 10) + "T12:00:00");
+  return isNaN(d) ? String(iso) : d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+}
+
+// Un service est « confirmé » si le mentor l'a confirmé pour la version actuelle du texte de l'étudiant
+function serviceConfirme(conf, id, sv) { const c = conf && conf.services && conf.services[id]; return !!(c && c.statut === "confirme" && c.v === (sv.v || 1)); }
+
+// Calcule les 4 conditions. Fonctionne pour l'étudiant (ses données) comme pour le mentor (données lues).
+function evaluerDossier(pdp, rencontres, conf, services) {
+  const prog = calculerProgression(pdp || {});
+  const moisOk = MOIS_KEYS.filter(k => {
+    const r = rencontres && rencontres[k], c = conf && conf[k];
+    return r && r.verrouille && c && c.statut === "confirmee" && c.version === versionRencontre(r);
+  });
+  const mois6 = moisOk.includes("mois6");
+  const nbSrv = Object.entries(services || {}).filter(([id, sv]) => serviceConfirme(conf, id, sv)).length;
+  const v = voieDe(pdp);
+  const jTot = v ? v.jalons.length : 0;
+  const jReq = v ? Math.min(2, jTot) : 0;
+  const jOk  = v ? v.jalons.filter(j => conf && conf.jalons && conf.jalons[j.id] && conf.jalons[j.id].statut === "valide").length : 0;
+  const criteres = [
+    { key: "pdp", ok: prog.atteint,
+      texte: `PDP rempli à ${prog.pct} % (au moins 80 %, avec toutes les étapes obligatoires terminées)` },
+    { key: "rencontres", ok: moisOk.length >= 4 && mois6,
+      texte: `${moisOk.length} rencontre${moisOk.length > 1 ? "s" : ""} confirmée${moisOk.length > 1 ? "s" : ""} par le mentor sur 6 (au moins 4, dont celle du mois 6)` },
+    { key: "service", ok: nbSrv >= 1,
+      texte: `${nbSrv} service${nbSrv > 1 ? "s" : ""} communautaire${nbSrv > 1 ? "s" : ""} confirmé${nbSrv > 1 ? "s" : ""} (au moins 1)` },
+    { key: "projet", ok: !!v && jOk >= jReq,
+      texte: v ? `${jOk} étape${jOk > 1 ? "s" : ""} de ton projet validée${jOk > 1 ? "s" : ""} par le mentor sur ${jTot} (au moins ${jReq})` : "Ton projet personnel : choisis ta voie à l’étape S6 du PDP" },
+  ];
+  return { criteres, pret: criteres.every(c => c.ok), resume: { pdpPct: prog.pct, rencontres: moisOk.length, services: nbSrv, jalons: jOk, jalonsTotal: jTot } };
+}
+
+// encours → pret → (corrections) → mentor → valide
+function statutDossier(ev, dossier) {
+  if (dossier && dossier.coordo && dossier.coordo.statut === "valide") return "valide";
+  if (dossier && dossier.mentor && dossier.mentor.statut === "valide") return "mentor";
+  if (dossier && dossier.mentor && dossier.mentor.statut === "corrections") return "corrections";
+  return ev.pret ? "pret" : "encours";
+}
+const TEXTES_DOSSIER = {
+  encours:     { titre: "Dossier en cours",                          cls: "att", texte: "Continue ton chemin. Quand les quatre conditions ci-dessous seront remplies, ton mentor pourra examiner ton dossier." },
+  pret:        { titre: "Prêt pour la validation de ton mentor",     cls: "att", texte: "Les quatre conditions sont remplies. Ton mentor va examiner ton dossier." },
+  corrections: { titre: "Corrections demandées par ton mentor",      cls: "corr", texte: "" },
+  mentor:      { titre: "Validé par ton mentor",                     cls: "ok",  texte: "Il reste une dernière étape : la validation du coordinateur national." },
+  valide:      { titre: "Dossier validé, certificat à venir",        cls: "ok",  texte: "" },
+};
+
+function renderDossier() {
+  const carteStatut = document.getElementById("dossierStatutCard");
+  if (!carteStatut) return;
+  const ev = evaluerDossier(MY_PDP, MY_RENCONTRES, MY_CONFIRMATIONS, MY_SERVICES);
+  const st = statutDossier(ev, MY_DOSSIER);
+  const t = TEXTES_DOSSIER[st];
+  const msg = st === "corrections" ? `<p class="settings-hint" style="font-weight:600;">${escapeAttr((MY_DOSSIER.mentor && MY_DOSSIER.mentor.message) || "Ton mentor te donnera les détails à la prochaine rencontre.")}</p>` : "";
+  carteStatut.innerHTML = `
+    <p class="eyebrow">🎓 Mon dossier de certification</p>
+    <p><span class="badge-statut ${t.cls}">${t.titre}</span></p>
+    ${t.texte ? `<p class="settings-hint">${t.texte}</p>` : ""}${msg}`;
+
+  const carteCrit = document.getElementById("dossierCriteresCard");
+  carteCrit.innerHTML = `
+    <p class="eyebrow">Les quatre conditions</p>
+    <ul style="list-style:none;padding:0;margin:6px 0 0;">${ev.criteres.map(c =>
+      `<li style="margin:8px 0;">${c.ok ? "✅" : "⬜"} ${escapeAttr(c.texte)}</li>`).join("")}</ul>
+    <p class="settings-hint" style="margin-top:10px;">Rien n’est automatique : c’est ton mentor, puis le coordinateur national, qui valident ton dossier.</p>`;
+
+  renderDossierFinal(st);
+  renderServices();
+  majJalonsVoie();
+}
+
+async function renderDossierFinal(st) {
+  const card = document.getElementById("dossierFinalCard");
+  if (!card) return;
+  if (st !== "valide") { card.style.display = "none"; return; }
+  let cert = null;
+  const id = MY_DOSSIER.coordo && MY_DOSSIER.coordo.certifId;
+  if (id) { try { cert = await window.AbbaSync.getCertification(id); } catch (e) { console.warn(e); } }
+  const quand = (cert && cert.date)
+    ? `<p style="margin:10px 0 0;">📅 <strong>${escapeAttr(fmtDateLongue(cert.date))}</strong>${cert.lieu ? `<br>📍 ${escapeAttr(cert.lieu)}` : ""}${cert.nom ? `<br>👥 ${escapeAttr(cert.nom)}` : ""}</p>`
+    : `<p class="settings-hint" style="margin-top:10px;font-weight:600;">La date n’est pas encore fixée. Elle s’affichera ici dès qu’elle le sera.</p>`;
+  card.style.display = "";
+  card.innerHTML = `
+    <p class="eyebrow">🎓 La Certification des Bâtisseurs</p>
+    <p>Ton dossier est validé : ton <strong>Certificat du Bâtisseur</strong> t’est accordé.</p>
+    <p class="settings-hint">Tu ne le reçois pas par l’application. Une date sera fixée pour la <strong>Certification des Bâtisseurs</strong> : tous les membres de ta cohorte seront réunis pour recevoir ensemble leur Certificat du Bâtisseur et leur carte de membre du Bâtisseur. Tu devras être présent sur place.</p>
+    <p class="settings-hint">Ce moment sert aussi à rencontrer d’autres bâtisseurs et à comprendre que tu fais partie d’une communauté.</p>
+    ${quand}`;
+}
+
+// ── Services communautaires (côté étudiant) ─────────────────
+function statutService(id, sv) {
+  const c = MY_CONFIRMATIONS.services && MY_CONFIRMATIONS.services[id];
+  if (c && c.v === (sv.v || 1)) return c.statut === "confirme" ? "confirme" : "correction";
+  return "attente";
+}
+function renderServices() {
+  const zone = document.getElementById("servicesListe");
+  if (!zone) return;
+  const liste = Object.entries(MY_SERVICES).sort((a, b) => String(b[1].date || "").localeCompare(String(a[1].date || "")));
+  if (!liste.length) { zone.innerHTML = `<p class="settings-hint">Aucun service enregistré pour le moment.</p>`; return; }
+  zone.innerHTML = liste.map(([id, sv]) => {
+    const st = statutService(id, sv);
+    const badge = st === "confirme" ? `<span class="badge-statut ok">✓ confirmé par ton mentor</span>`
+      : st === "correction" ? `<span class="badge-statut corr">✎ correction demandée</span>`
+      : `<span class="badge-statut att">⏳ en attente de ton mentor</span>`;
+    const msg = st === "correction" ? `<p class="settings-hint" style="font-weight:600;">${escapeAttr((MY_CONFIRMATIONS.services[id] || {}).message || "")}</p>` : "";
+    return `<div class="histo-card" style="border:1px solid var(--line,#ddd);border-radius:10px;padding:10px;margin:8px 0;">
+      <p style="margin:0 0 4px;"><strong>${escapeAttr(fmtDateLongue(sv.date) || "Date non indiquée")}</strong> ${badge}</p>
+      <p style="margin:4px 0;">${escapeAttr(sv.quoi || "")}</p>
+      <p class="settings-hint" style="margin:2px 0;">${sv.ou ? "📍 " + escapeAttr(sv.ou) : ""}${sv.personnes ? " · 👥 " + escapeAttr(sv.personnes) + " personne(s)" : ""}</p>
+      ${sv.appris ? `<p class="settings-hint" style="margin:2px 0;">💡 ${escapeAttr(sv.appris)}</p>` : ""}${msg}
+      ${st === "confirme" ? "" : `<button class="btn-secondary" type="button" style="font-size:12px;padding:6px 10px;" onclick="editerService('${id}')">Modifier</button>
+      <button class="btn-secondary" type="button" style="font-size:12px;padding:6px 10px;" onclick="supprimerService('${id}')">Supprimer</button>`}
+    </div>`;
+  }).join("");
+}
+function viderFormService() {
+  SRV_EN_EDITION = "";
+  ["srvId", "srvQuoi", "srvOu", "srvDate", "srvPersonnes", "srvAppris"].forEach(i => { const el = document.getElementById(i); if (el) el.value = ""; });
+  const b = document.getElementById("srvCancelBtn"); if (b) b.style.display = "none";
+  const e = document.getElementById("srvErr"); if (e) e.textContent = "";
+}
+window.editerService = function(id) {
+  const sv = MY_SERVICES[id]; if (!sv) return;
+  SRV_EN_EDITION = id;
+  setVal("srvQuoi", sv.quoi); setVal("srvOu", sv.ou); setVal("srvDate", sv.date); setVal("srvPersonnes", sv.personnes); setVal("srvAppris", sv.appris);
+  document.getElementById("srvCancelBtn").style.display = "";
+  document.getElementById("serviceForm").scrollIntoView({ behavior: "smooth", block: "center" });
+};
+window.supprimerService = async function(id) {
+  if (!confirm("Supprimer ce service ?")) return;
+  try { await window.AbbaSync.deleteService(CURRENT_USER.uid, id); if (SRV_EN_EDITION === id) viderFormService(); }
+  catch (e) { console.error(e); alert("Échec de la suppression. Réessaie."); }
+};
+function setupServices() {
+  if (SERVICES_PRET) return;
+  SERVICES_PRET = true;
+  document.getElementById("srvCancelBtn").addEventListener("click", viderFormService);
+  document.getElementById("srvSaveBtn").addEventListener("click", async () => {
+    const err = document.getElementById("srvErr"); err.textContent = "";
+    const quoi = getVal("srvQuoi");
+    if (!quoi) { err.textContent = "Décris ce que tu as fait."; return; }
+    const id = SRV_EN_EDITION || ("srv" + Date.now().toString(36));
+    const ancien = MY_SERVICES[id];
+    const data = { quoi, ou: getVal("srvOu"), date: getVal("srvDate"), personnes: Number(getVal("srvPersonnes")) || 0, appris: getVal("srvAppris"), v: ((ancien && ancien.v) || 0) + 1 };
+    try { await window.AbbaSync.saveService(CURRENT_USER.uid, id, data); viderFormService(); }
+    catch (e) { console.error(e); err.textContent = "Échec de l’enregistrement. Réessaie."; }
+  });
+}
+
+// Pastilles « validée par ton mentor » sur les étapes du projet (écran S6)
+function majJalonsVoie() {
+  document.querySelectorAll("[data-jalon]").forEach(el => {
+    const c = MY_CONFIRMATIONS.jalons && MY_CONFIRMATIONS.jalons[el.dataset.jalon];
+    el.innerHTML = !c ? "" : c.statut === "valide" ? `<span class="badge-statut ok">✓ validée par ton mentor</span>`
+      : `<span class="badge-statut corr">↺ à reprendre${c.message ? " : " + escapeAttr(c.message) : ""}</span>`;
+  });
+}
+
+// ── Fenêtre du mentor : dossier, services, étapes du projet, validation ──
+window.showDossierMentor = async function(uid) {
+  const s = SUIVI_DATA.find(x => x.uid === uid) || (window.__sumCache || []).find(x => x.uid === uid) || {};
+  const nom = `${s.prenom || ""} ${s.nom || ""}`.trim() || s.email || uid;
+  const estSonMentor = !!CURRENT_USER && String(s.mentorEmail || "").toLowerCase() === String(CURRENT_USER.email || "").toLowerCase();
+  let pdp, r, c, srv, dos;
+  try {
+    [pdp, r, c, srv, dos] = await Promise.all([
+      window.AbbaSync.watchMyPDPOnce(uid), window.AbbaSync.getRencontresOf(uid), window.AbbaSync.getConfirmations(uid),
+      window.AbbaSync.getServicesOf(uid), window.AbbaSync.getDossier(uid),
+    ]);
+  } catch (e) { console.error(e); alert("Impossible de lire le dossier."); return; }
+  pdp = pdp || {};
+  const ev = evaluerDossier(pdp, r, c, srv);
+  const st = statutDossier(ev, dos);
+  const v = voieDe(pdp);
+  window.__dosCache = { uid, srv, ev };
+  const coordoOk = !!(dos.coordo && dos.coordo.statut === "valide");
+  const peutAgir = estSonMentor && !coordoOk;
+
+  const servicesHtml = Object.entries(srv).map(([id, sv]) => {
+    const cf = c.services && c.services[id];
+    const stS = cf && cf.v === (sv.v || 1) ? cf.statut : "attente";
+    const badge = stS === "confirme" ? `<span class="badge-statut ok">✓ confirmé</span>` : stS === "correction" ? `<span class="badge-statut corr">✎ correction demandée</span>` : `<span class="badge-statut att">⏳ à confirmer</span>`;
+    return `<div class="pdp-mentor-row"><dt>${escapeAttr(fmtDateLongue(sv.date) || "Date non indiquée")} ${badge}</dt>
+      <dd>${escapeAttr(sv.quoi || "")}<br><em>${sv.ou ? "📍 " + escapeAttr(sv.ou) : ""}${sv.personnes ? " · 👥 " + escapeAttr(sv.personnes) : ""}</em>${sv.appris ? "<br>💡 " + escapeAttr(sv.appris) : ""}
+      ${stS === "correction" && cf.message ? `<br><strong>Ta demande : ${escapeAttr(cf.message)}</strong>` : ""}
+      ${(peutAgir && stS !== "confirme") ? `<div class="renc-actions" style="margin-top:6px;">
+        <button class="btn-primary" style="font-size:12px;padding:6px 10px;" onclick="confirmerService('${uid}','${id}')">✓ Confirmer</button>
+        <button class="btn-secondary" style="font-size:12px;padding:6px 10px;" onclick="ouvrirMessageDossier('svc-${id}','envoyerCorrectionService(\\'${uid}\\',\\'${id}\\')')">✎ Demander une correction</button></div><div id="msg-svc-${id}"></div>` : ""}</dd></div>`;
+  }).join("") || `<p class="settings-hint">Aucun service enregistré pour le moment.</p>`;
+
+  const jalonsHtml = v ? v.jalons.map(j => {
+    const cj = c.jalons && c.jalons[j.id];
+    const badge = !cj ? `<span class="badge-statut att">⏳ pas encore validée</span>` : cj.statut === "valide" ? `<span class="badge-statut ok">✓ validée</span>` : `<span class="badge-statut corr">↺ à reprendre</span>`;
+    return `<div class="pdp-mentor-row"><dt>${escapeAttr(j.label)}</dt><dd>${badge}${cj && cj.statut === "reprendre" && cj.message ? `<br><strong>${escapeAttr(cj.message)}</strong>` : ""}
+      ${peutAgir ? `<div class="renc-actions" style="margin-top:6px;">
+        <button class="btn-primary" style="font-size:12px;padding:6px 10px;" onclick="validerJalon('${uid}','${j.id}')">✓ Valider</button>
+        <button class="btn-secondary" style="font-size:12px;padding:6px 10px;" onclick="ouvrirMessageDossier('jal-${j.id}','envoyerReprendreJalon(\\'${uid}\\',\\'${j.id}\\')')">↺ À reprendre</button></div><div id="msg-jal-${j.id}"></div>` : ""}</dd></div>`;
+  }).join("") : `<p class="settings-hint">Cet étudiant n’a pas encore choisi sa voie de projet (étape S6).</p>`;
+
+  const decisions = !peutAgir ? `<p class="settings-hint">${coordoOk ? "Le dossier est déjà validé par le coordinateur national." : "Seul le mentor affecté peut valider ce dossier."}</p>` : `
+    <div class="renc-actions">
+      <button class="btn-primary" style="font-size:13px;padding:8px 12px;" ${ev.pret ? "" : "disabled"} onclick="validerDossierMentor('${uid}')">✓ Valider le dossier</button>
+      <button class="btn-secondary" style="font-size:13px;padding:8px 12px;" onclick="ouvrirMessageDossier('dos','corrigerDossierMentor(\\'${uid}\\')')">✎ Demander des corrections</button>
+    </div><div id="msg-dos"></div>
+    ${ev.pret ? "" : `<p class="settings-hint">Tu pourras valider le dossier quand les quatre conditions seront remplies.</p>`}`;
+
+  document.getElementById("dossierMentorOverlay")?.remove();
+  document.body.insertAdjacentHTML("beforeend", `
+  <div class="pdp-mentor-overlay" id="dossierMentorOverlay" onclick="if(event.target.id==='dossierMentorOverlay')this.remove()">
+    <div class="pdp-mentor-box">
+      <button class="pdp-mentor-close" onclick="document.getElementById('dossierMentorOverlay').remove()">×</button>
+      <h2 style="font-family:var(--font-display);color:var(--navy);margin:0 0 6px;">Dossier — ${escapeAttr(nom)}</h2>
+      <p style="margin:0 0 12px;"><span class="badge-statut ${TEXTES_DOSSIER[st].cls}">${TEXTES_DOSSIER[st].titre.replace("ton mentor", "le mentor")}</span></p>
+      <div class="pdp-mentor-section"><h3>Les quatre conditions</h3>
+        ${ev.criteres.map(x => `<p style="margin:6px 0;">${x.ok ? "✅" : "⬜"} ${escapeAttr(x.texte)}</p>`).join("")}</div>
+      <div class="pdp-mentor-section"><h3>Services communautaires</h3>${servicesHtml}</div>
+      <div class="pdp-mentor-section"><h3>Étapes du projet${v ? " — " + escapeAttr(v.titre) : ""}</h3>${jalonsHtml}</div>
+      <div class="pdp-mentor-section"><h3>Décision</h3>${decisions}</div>
+      <button class="btn-secondary" style="width:100%;margin-top:8px;" onclick="document.getElementById('dossierMentorOverlay').remove()">Fermer</button>
+    </div>
+  </div>`);
+};
+
+// Petit champ de message qui s'ouvre sous le bouton (correction, étape à reprendre…)
+window.ouvrirMessageDossier = function(cle, appel) {
+  const zone = document.getElementById("msg-" + cle); if (!zone) return;
+  zone.innerHTML = `<textarea class="text-input" rows="2" id="txt-${cle}" placeholder="Explique ce qui doit être repris ou corrigé"></textarea>
+    <button class="btn-primary" style="font-size:12px;padding:6px 10px;margin-top:6px;" onclick="${appel}">Envoyer</button>
+    <p class="auth-error" id="err-${cle}"></p>`;
+};
+function messageDossier(cle) {
+  const t = (document.getElementById("txt-" + cle)?.value || "").trim();
+  if (!t) { const e = document.getElementById("err-" + cle); if (e) e.textContent = "Écris un court message."; return null; }
+  return t;
+}
+async function agirDossier(uid, fn, echec) {
+  try { await fn(); await window.showDossierMentor(uid); }
+  catch (e) { console.error(e); alert(echec || "Échec de l’enregistrement. Réessaie."); }
+}
+window.confirmerService = (uid, id) => agirDossier(uid, () => window.AbbaSync.saveConfirmationService(uid, id, { statut: "confirme", v: (window.__dosCache.srv[id].v || 1), par: CURRENT_USER.email }));
+window.envoyerCorrectionService = (uid, id) => { const m = messageDossier("svc-" + id); if (!m) return;
+  return agirDossier(uid, () => window.AbbaSync.saveConfirmationService(uid, id, { statut: "correction", v: (window.__dosCache.srv[id].v || 1), message: m, par: CURRENT_USER.email })); };
+window.validerJalon = (uid, jid) => agirDossier(uid, () => window.AbbaSync.saveConfirmationJalon(uid, jid, { statut: "valide", message: "", par: CURRENT_USER.email }));
+window.envoyerReprendreJalon = (uid, jid) => { const m = messageDossier("jal-" + jid); if (!m) return;
+  return agirDossier(uid, () => window.AbbaSync.saveConfirmationJalon(uid, jid, { statut: "reprendre", message: m, par: CURRENT_USER.email })); };
+window.validerDossierMentor = (uid) => {
+  const ev = window.__dosCache && window.__dosCache.ev;
+  if (!ev || !ev.pret) { alert("Les quatre conditions ne sont pas encore remplies."); return; }
+  if (!confirm("Valider ce dossier ? Il sera ensuite transmis au coordinateur national.")) return;
+  return agirDossier(uid, () => window.AbbaSync.saveDossierMentor(uid, { statut: "valide", message: "", par: CURRENT_USER.email, resume: ev.resume }));
+};
+window.corrigerDossierMentor = (uid) => { const m = messageDossier("dos"); if (!m) return;
+  return agirDossier(uid, () => window.AbbaSync.saveDossierMentor(uid, { statut: "corrections", message: m, par: CURRENT_USER.email })); };
+
+// ── Coordinateur : Certification des Bâtisseurs et validation finale ──
+let CERT_LISTE = [];
+let CERT_EN_EDITION = "";
+let CERT_PRET = false;
+async function chargerCertifications() {
+  if (!IS_ADMIN) return;
+  if (!CERT_PRET) {
+    CERT_PRET = true;
+    document.getElementById("certAjouterBtn").addEventListener("click", async () => {
+      const err = document.getElementById("certErr"); err.textContent = "";
+      const nom = getVal("certNom"), date = getVal("certDate"), lieu = getVal("certLieu");
+      if (!nom || !date) { err.textContent = "Indique la cohorte et la date."; return; }
+      const id = CERT_EN_EDITION || ("cert" + Date.now().toString(36));
+      try {
+        await window.AbbaSync.saveCertification(id, { nom, date, lieu, par: CURRENT_USER.email });
+        CERT_EN_EDITION = ""; setVal("certNom", ""); setVal("certDate", ""); setVal("certLieu", "");
+        document.getElementById("certAjouterBtn").textContent = "Enregistrer cette Certification";
+        chargerCertifications();
+      } catch (e) { console.error(e); err.textContent = "Échec (droits insuffisants ?). Seul le coordinateur national ou le PPV peut le faire."; }
+    });
+  }
+  let dossiers = {}, sums = [];
+  try {
+    [CERT_LISTE, dossiers, sums] = await Promise.all([window.AbbaSync.loadCertifications(), window.AbbaSync.loadAllDossiers(), window.AbbaSync.loadAllSummaries()]);
+  } catch (e) { console.error(e); }
+  window.__sumCache = sums;
+  const nomDe = (uid) => { const s = sums.find(x => x.uid === uid) || {}; return `${s.prenom || ""} ${s.nom || ""}`.trim() || s.email || uid; };
+  const optionsCert = (sel) => `<option value="">— date à fixer —</option>` + CERT_LISTE.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)))
+    .map(c => `<option value="${c.id}" ${c.id === sel ? "selected" : ""}>${escapeAttr(c.nom)} — ${escapeAttr(fmtDateLongue(c.date))}</option>`).join("");
+
+  const liste = document.getElementById("certifListe");
+  liste.innerHTML = CERT_LISTE.length ? CERT_LISTE.slice().sort((a, b) => String(a.date).localeCompare(String(b.date))).map(c => {
+    const n = Object.values(dossiers).filter(d => d.coordo && d.coordo.certifId === c.id).length;
+    return `<div class="pdp-mentor-row"><dt>${escapeAttr(c.nom)}</dt><dd>${escapeAttr(fmtDateLongue(c.date))}${c.lieu ? " · " + escapeAttr(c.lieu) : ""} · ${n} dossier${n > 1 ? "s" : ""}
+      <button class="btn-secondary" type="button" style="font-size:12px;padding:5px 9px;margin-left:6px;" onclick="modifierCertif('${c.id}')">Modifier</button>
+      ${n ? "" : `<button class="btn-secondary" type="button" style="font-size:12px;padding:5px 9px;" onclick="supprimerCertif('${c.id}')">Supprimer</button>`}</dd></div>`;
+  }).join("") : `<p class="settings-hint">Aucune Certification enregistrée.</p>`;
+
+  const attente = Object.entries(dossiers).filter(([, d]) => d.mentor && d.mentor.statut === "valide" && !(d.coordo && d.coordo.statut === "valide"));
+  document.getElementById("dossiersAValider").innerHTML = attente.length ? attente.map(([uid, d]) => {
+    const r = d.mentor.resume || {};
+    return `<div class="pdp-mentor-row"><dt>${escapeAttr(nomDe(uid))}</dt><dd>PDP ${escapeAttr(r.pdpPct != null ? r.pdpPct : "—")} % · ${escapeAttr(r.rencontres != null ? r.rencontres : "—")} rencontres · ${escapeAttr(r.services != null ? r.services : "—")} service(s) · ${escapeAttr(r.jalons != null ? r.jalons : "—")} étape(s) du projet<br>Validé par ${escapeAttr(d.mentor.par || "le mentor")}
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px;">
+        <button class="btn-secondary" type="button" style="font-size:12px;padding:6px 10px;" onclick="showDossierMentor('${uid}')">Voir le dossier</button>
+        <select class="text-input" id="cert-${uid}">${optionsCert("")}</select>
+        <button class="btn-primary" type="button" style="font-size:13px;padding:8px 12px;" onclick="validerDossierCoordo('${uid}')">✓ Valider le dossier</button>
+      </div></dd></div>`;
+  }).join("") : `<p class="settings-hint">Aucun dossier n’attend ta validation.</p>`;
+
+  const valides = Object.entries(dossiers).filter(([, d]) => d.coordo && d.coordo.statut === "valide");
+  document.getElementById("dossiersValides").innerHTML = valides.length ? valides.map(([uid, d]) =>
+    `<div class="pdp-mentor-row"><dt>${escapeAttr(nomDe(uid))}</dt><dd><select class="text-input" onchange="attribuerCertif('${uid}', this.value)">${optionsCert(d.coordo.certifId || "")}</select></dd></div>`
+  ).join("") : `<p class="settings-hint">Aucun dossier validé pour le moment.</p>`;
+}
+window.modifierCertif = function(id) {
+  const c = CERT_LISTE.find(x => x.id === id); if (!c) return;
+  CERT_EN_EDITION = id; setVal("certNom", c.nom); setVal("certDate", c.date); setVal("certLieu", c.lieu);
+  document.getElementById("certAjouterBtn").textContent = "Enregistrer les modifications";
+  document.getElementById("certifCard").scrollIntoView({ behavior: "smooth", block: "start" });
+};
+window.supprimerCertif = async function(id) {
+  if (!confirm("Supprimer cette Certification ?")) return;
+  try { await window.AbbaSync.deleteCertification(id); chargerCertifications(); } catch (e) { console.error(e); alert("Échec de la suppression."); }
+};
+window.validerDossierCoordo = async function(uid) {
+  if (!confirm("Valider ce dossier ? L’étudiant verra « Dossier validé, certificat à venir ».")) return;
+  const certifId = document.getElementById("cert-" + uid)?.value || "";
+  try { await window.AbbaSync.saveDossierCoordo(uid, { statut: "valide", certifId, par: CURRENT_USER.email }); chargerCertifications(); }
+  catch (e) { console.error(e); alert("Échec. Seul le coordinateur national (ou le PPV) peut valider un dossier."); }
+};
+window.attribuerCertif = async function(uid, certifId) {
+  try { await window.AbbaSync.saveDossierCoordo(uid, { statut: "valide", certifId, par: CURRENT_USER.email }); chargerCertifications(); }
+  catch (e) { console.error(e); alert("Échec de l’enregistrement."); }
+};
