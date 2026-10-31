@@ -689,6 +689,13 @@ if ('serviceWorker' in navigator) {
         <button class="btn-secondary" id="logoutBtn">Se déconnecter</button>
       </div>
 
+      <div class="card settings-card" id="apkCard">
+        <p class="eyebrow">📲 Application Android</p>
+        <p class="settings-hint" id="apkHint">Pour recevoir les rappels de rencontre par notification et écouter ta déclaration écran éteint.</p>
+        <a class="btn-primary" id="apkLien" href="https://github.com/batisseursbibliques/abba-telechargements/raw/main/ABBA-MiseEnAction.apk" download="ABBA-MiseEnAction.apk" style="display:block;text-align:center;text-decoration:none;">⬇️ Télécharger l'application</a>
+        <p class="settings-hint" id="apkAide" style="margin-top:8px;">Fichier ABBA-MiseEnAction.apk · environ 4,5 Mo. Une fois téléchargé, ouvre-le (notification de téléchargement ou « Fichiers » → « Téléchargements »). Si Android le demande, autorise l'installation depuis cette source, puis touche « Installer » (si une alerte Play Protect apparaît : « Installer quand même »). Ouvre ensuite ABBA Mise en Action, connecte-toi et accepte les notifications. Sur iPhone, continue dans le navigateur.</p>
+      </div>
+
       <div class="card settings-card">
         <p class="eyebrow">🔔 Rappels</p>
         <label class="check-item"><input type="checkbox" id="rap-rencontre"> <span>Me rappeler ma prochaine rencontre (la veille à 18 h et le matin à 7 h 30)</span></label>

@@ -2365,6 +2365,11 @@ function setupRappels() {
   document.getElementById("rap-rencontre").checked = !!r.rencontre;
   document.getElementById("rap-grille").checked = !!r.grille;
   document.getElementById("rap-heure").value = r.heure || "20:00";
+  if (estNatif()) {   // déjà dans l'application Android : plus besoin du lien de téléchargement
+    document.getElementById("apkLien").style.display = "none";
+    document.getElementById("apkAide").style.display = "none";
+    document.getElementById("apkHint").textContent = "✓ Tu utilises l'application Android : les rappels et la lecture écran éteint sont disponibles.";
+  }
   const etat = document.getElementById("rap-etat");
   if (!estNatif()) etat.textContent = "Les notifications fonctionnent dans l'application Android ABBA Mise en Action. Dans le navigateur, ta prochaine rencontre s'affiche à l'accueil.";
   bouton.addEventListener("click", async () => {
