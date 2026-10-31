@@ -587,6 +587,13 @@ if ('serviceWorker' in navigator) {
       <div class="card" id="dossierFinalCard" style="display:none;"></div>
       <div class="card" id="dossierCriteresCard"></div>
 
+      <div class="card" id="pdfCard">
+        <p class="eyebrow">📄 Mon PDP en PDF</p>
+        <p class="settings-hint">Télécharge ton Plan de Développement Personnel et ton dossier dans un seul document, à garder ou à imprimer.</p>
+        <button class="btn-secondary" type="button" onclick="exporterPdpPdf()">📄 Télécharger mon PDP et mon dossier (PDF)</button>
+        <p class="auth-error" id="pdfErr"></p>
+      </div>
+
       <div class="card" id="servicesCard">
         <p class="eyebrow">🤝 Mes services communautaires</p>
         <p class="settings-hint">Un service que tu as réellement rendu à ta communauté pendant ces 6 mois, même petit. Il en faut au moins un, confirmé par ton mentor.</p>

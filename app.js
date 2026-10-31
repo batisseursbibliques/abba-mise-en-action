@@ -2610,16 +2610,8 @@ window.toggleSuivi = function(uid) {
 };
 
 // Vue PDP complète pour le mentor (modale)
-window.showPdpMentor = async function(uid) {
-  const snap = await window.AbbaSync.watchMyPDPOnce(uid);
-  if (!snap) { alert("PDP non encore rempli."); return; }
-  const d = snap;
-
-  // Trouver le nom dans SUIVI_DATA
-  const progM = calculerProgression(d);
-  const s = SUIVI_DATA.find(x => x.uid === uid) || {};
-  const nom = `${s.prenom || ""} ${s.nom || ""}`.trim() || uid;
-
+// Construit le texte du PDP (HTML en lecture seule) : sert à la fenêtre du mentor et à l'export PDF
+function construirePdpHtml(d, nom, progM) {
   const dimsHtml = DIMENSIONS.map(dim => {
     const v = d.s3?.[dim.key];
     return v ? `<div class="pdp-mentor-row">
@@ -2752,10 +2744,26 @@ window.showPdpMentor = async function(uid) {
         <div class="pdp-mentor-row"><dt>À faire croître en priorité</dt><dd>${escapeAttr(d.s13?.priorite) || "—"}</dd></div>
       </div>
 
+      <button class="btn-secondary" style="width:100%;margin-top:8px;" onclick="exporterPdpPdf('${uid}')">📄 Télécharger ce PDP en PDF</button>
       <button class="btn-secondary" style="width:100%;margin-top:8px;"
         onclick="document.getElementById('pdpMentorOverlay').remove()">Fermer</button>
     </div>
   </div>`;
+
+  return html;
+}
+
+window.showPdpMentor = async function(uid) {
+  const snap = await window.AbbaSync.watchMyPDPOnce(uid);
+  if (!snap) { alert("PDP non encore rempli."); return; }
+  const d = snap;
+
+  // Trouver le nom dans SUIVI_DATA
+  const progM = calculerProgression(d);
+  const s = SUIVI_DATA.find(x => x.uid === uid) || {};
+  const nom = `${s.prenom || ""} ${s.nom || ""}`.trim() || uid;
+
+  const html = construirePdpHtml(d, nom, progM);
 
   document.body.insertAdjacentHTML("beforeend", html);
 };
@@ -3326,4 +3334,118 @@ window.validerDossierCoordo = async function(uid) {
 window.attribuerCertif = async function(uid, certifId) {
   try { await window.AbbaSync.saveDossierCoordo(uid, { statut: "valide", certifId, par: CURRENT_USER.email }); chargerCertifications(); }
   catch (e) { console.error(e); alert("Échec de l’enregistrement."); }
+};
+
+// ─────────────────────────────────────────────────────────────
+// EXPORT PDF (phase 5) : « Mon PDP et mon dossier » (étudiant) et « PDP de l'étudiant » (mentor)
+// Le PDF est fabriqué sur le téléphone par la bibliothèque jsPDF : aucune donnée n'est envoyée à un serveur.
+// ─────────────────────────────────────────────────────────────
+function chargerJsPdf() {
+  if (window.jspdf) return Promise.resolve(window.jspdf);
+  return new Promise((ok, ko) => {
+    const s = document.createElement("script"); s.src = "jspdf.umd.min.js";
+    s.onload = () => ok(window.jspdf); s.onerror = () => ko(new Error("jspdf")); document.head.appendChild(s);
+  });
+}
+// La police standard d'un PDF ne dessine ni les émojis ni quelques symboles : on les remplace ou on les retire
+function textePdf(t) {
+  return String(t == null ? "" : t)
+    .replace(/✅/g, "[x]").replace(/⬜/g, "[ ]").replace(/[✓✔]/g, "(ok)").replace(/→/g, "->").replace(/≥/g, ">=").replace(/≤/g, "<=")
+    .replace(/[\u202f\u00a0]/g, " ").replace(/[\u2009\u200a]/g, " ")
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]/gu, "")
+    .replace(/[ \t]+\n/g, "\n").trim();
+}
+function sectionsDepuisHtml(html) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  doc.querySelectorAll("br").forEach(b => b.replaceWith("\n"));
+  return [...doc.querySelectorAll(".pdp-mentor-section")].map(sec => ({
+    titre: ((sec.querySelector("h3") || {}).textContent || "").trim(),
+    lignes: [...sec.querySelectorAll(".pdp-mentor-row")].map(r => [((r.querySelector("dt") || {}).textContent || "").trim(), ((r.querySelector("dd") || {}).textContent || "").trim()]),
+  }));
+}
+async function fabriquerPdf({ titre, sousTitre, sections }) {
+  const { jsPDF } = await chargerJsPdf();
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const W = 210, H = 297, M = 18, LW = W - 2 * M;
+  const NAVY = [24, 40, 78], OR = [176, 138, 46], GRIS = [95, 95, 95];
+  let y = M;
+  const place = (h) => { if (y + h > H - 20) { doc.addPage(); y = M; } };
+  doc.setFont("helvetica", "bold"); doc.setFontSize(19); doc.setTextColor(...NAVY);
+  doc.splitTextToSize(textePdf(titre), LW).forEach(l => { doc.text(l, M, y + 6); y += 8; });
+  doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(...GRIS);
+  doc.text(textePdf(sousTitre), M, y + 3); y += 6;
+  doc.setDrawColor(...OR); doc.setLineWidth(0.8); doc.line(M, y, W - M, y); y += 7;
+
+  sections.forEach(sec => {
+    place(18);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(12.5); doc.setTextColor(...NAVY);
+    doc.splitTextToSize(textePdf(sec.titre), LW).forEach(l => { place(7); doc.text(l, M, y + 4); y += 6.2; });
+    doc.setDrawColor(210, 210, 210); doc.setLineWidth(0.3); doc.line(M, y, W - M, y); y += 3.5;
+    (sec.lignes || []).forEach(([lab, val]) => {
+      const lignesVal = doc.setFont("helvetica", "normal").setFontSize(10.5).splitTextToSize(textePdf(val) || "—", LW);
+      place(5 + 5);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.setTextColor(...GRIS);
+      doc.text(textePdf(lab).toUpperCase().slice(0, 90), M, y + 3); y += 4.6;
+      doc.setFont("helvetica", "normal"); doc.setFontSize(10.5); doc.setTextColor(30, 30, 30);
+      lignesVal.forEach(l => { place(5); doc.text(l, M, y + 3.5); y += 5; });
+      y += 2.2;
+    });
+    y += 4;
+  });
+
+  const n = doc.getNumberOfPages();
+  const date = new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+  for (let i = 1; i <= n; i++) {
+    doc.setPage(i); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...GRIS);
+    doc.text(textePdf("ABBA - Mise en Action - " + date), M, H - 10);
+    doc.text(`${i} / ${n}`, W - M, H - 10, { align: "right" });
+  }
+  return doc.output("blob");
+}
+async function livrerPdf(blob, nom) {
+  const natif = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  if (natif && navigator.canShare && typeof File === "function") {
+    try {
+      const fichier = new File([blob], nom, { type: "application/pdf" });
+      if (navigator.canShare({ files: [fichier] })) { await navigator.share({ files: [fichier], title: nom }); return; }
+    } catch (e) { if (e && e.name === "AbortError") return; }
+  }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nom;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+function nomFichierPdf(nom) { return "PDP-" + String(nom || "etudiant").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "") + ".pdf"; }
+
+// Section « Mon dossier » ajoutée à la fin du PDF de l'étudiant
+function sectionsDossier() {
+  const ev = evaluerDossier(MY_PDP, MY_RENCONTRES, MY_CONFIRMATIONS, MY_SERVICES);
+  const st = statutDossier(ev, MY_DOSSIER);
+  const out = [{ titre: "Mon dossier de certification", lignes: [["Statut", TEXTES_DOSSIER[st].titre]].concat(ev.criteres.map((c, i) => ["Condition " + (i + 1), (c.ok ? "[x] " : "[ ] ") + c.texte])) }];
+  const srv = Object.entries(MY_SERVICES);
+  if (srv.length) out.push({ titre: "Mes services communautaires", lignes: srv.map(([id, sv]) => {
+    const stS = statutService(id, sv);
+    return [fmtDateLongue(sv.date) || "Date non indiquée", [sv.quoi, sv.ou ? "Où : " + sv.ou : "", sv.personnes ? "Personnes touchées : " + sv.personnes : "", sv.appris ? "Appris : " + sv.appris : "", stS === "confirme" ? "Confirmé par le mentor" : stS === "correction" ? "Correction demandée" : "En attente du mentor"].filter(Boolean).join("\n")];
+  }) });
+  return out;
+}
+
+// uid absent : PDP et dossier de l'étudiant connecté ; uid présent : PDP d'un étudiant (côté mentor)
+window.exporterPdpPdf = async function(uid) {
+  const err = document.getElementById("pdfErr"); if (err) err.textContent = "";
+  try {
+    const soi = !uid;
+    const d = soi ? MY_PDP : await window.AbbaSync.watchMyPDPOnce(uid);
+    if (!d) { alert("PDP non encore rempli."); return; }
+    let nom;
+    if (soi) { const pr = (await window.AbbaSync.getUserProfile(CURRENT_USER.uid)) || {}; nom = `${pr.prenom || ""} ${pr.nom || ""}`.trim() || CURRENT_USER.displayName || CURRENT_USER.email || ""; }
+    else { const s = SUIVI_DATA.find(x => x.uid === uid) || {}; nom = `${s.prenom || ""} ${s.nom || ""}`.trim() || uid; }
+    const sections = sectionsDepuisHtml(construirePdpHtml(d, nom, calculerProgression(d)));
+    if (soi) sections.push(...sectionsDossier());
+    const prog = calculerProgression(d);
+    const blob = await fabriquerPdf({ titre: "PDP - " + nom, sousTitre: `Plan de Développement Personnel · Mise en Action · progression ${prog.pct} %`, sections });
+    await livrerPdf(blob, nomFichierPdf(nom));
+  } catch (e) {
+    console.error("export PDF:", e);
+    if (err) err.textContent = "Impossible de fabriquer le PDF pour le moment (connexion nécessaire la première fois). Réessaie.";
+    else alert("Impossible de fabriquer le PDF pour le moment. Réessaie.");
+  }
 };
