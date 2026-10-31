@@ -604,3 +604,11 @@ input[type="range"]{touch-action:pan-y;}
 .bib-ref{border-top:1px solid var(--line);padding-top:9px;margin-top:9px;line-height:1.55;}
 .bib-ref-texte{font-size:14px;white-space:pre-line;}
 .bib-feuille select{border:1px solid var(--line);border-radius:7px;padding:8px 10px;font-size:14px;color:var(--ink);background:var(--paper);margin-bottom:4px;max-width:100%;}
+.gr-start{padding:8px 0;}
+.gr-case:disabled{opacity:.35;}
+
+/* ===== Suivi économique ===== */
+.eco-net{font-weight:700;color:var(--navy);margin:4px 0 10px;}
+.eco-net.perte,.eco-ligne .perte{color:var(--brick);}
+.eco-ligne{display:flex;flex-direction:column;gap:2px;padding:8px 0;border-bottom:1px dashed var(--line);font-size:13px;}
+.seg-btn{font-size:13px;padding:10px 4px;}

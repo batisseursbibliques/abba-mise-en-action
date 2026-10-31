@@ -73,6 +73,7 @@ let unsubPDP       = null;
 let unsubRencontres = null;
 let unsubConfirmations = null;
 let unsubGrille = null;
+
 let unsubMentors   = null;   // liste complète des mentors (coordinateurs seulement)
 let unsubMyRole    = null;   // ma propre fiche de mentor (tout le monde)
 let ADMIN_OUVERT   = false;  // vrai une fois l'écran Admin chargé
@@ -285,9 +286,10 @@ function traduireErreur(err) {
 
 async function onAuthChanged(user) {
   // Nettoyer les listeners
-  [unsubAdmins, unsubPDP, unsubRencontres, unsubConfirmations, unsubGrille, unsubMentors, unsubMyRole].forEach(fn => fn && fn());
-  unsubAdmins = unsubPDP = unsubRencontres = unsubConfirmations = unsubGrille = unsubMentors = unsubMyRole = null;
-  MY_GRILLE = { pratiques: null, semaines: {} }; GRILLE_SEMAINE = null; GRILLE_DIRTY = false;
+  [unsubAdmins, unsubPDP, unsubRencontres, unsubConfirmations, unsubGrille, unsubEco, unsubMentors, unsubMyRole].forEach(fn => fn && fn());
+  unsubAdmins = unsubPDP = unsubRencontres = unsubConfirmations = unsubGrille = unsubEco = unsubMentors = unsubMyRole = null;
+  MY_ECO = { mois: {} };
+  MY_GRILLE = { debut: null, pratiques: null, semaines: {} }; GRILLE_SEMAINE = null; GRILLE_DIRTY = false;
   MY_CONFIRMATIONS = {};
   ALL_MENTORS = [];
 
@@ -402,8 +404,14 @@ async function onAuthChanged(user) {
   if (unsubGrille) unsubGrille();
   setupGrille();
   setupDiscipline();
+  if (unsubEco) unsubEco();
+  setupEconomie();
+  unsubEco = window.AbbaSync.watchMyEconomie(user.uid, (data) => {
+    MY_ECO = { mois: (data && data.mois) || {} };
+    if (ECO_DIRTY) renderEcoListe(); else renderEconomie();   // pas de redessin du formulaire pendant la saisie
+  });
   unsubGrille = window.AbbaSync.watchMyGrille(user.uid, (data) => {
-    MY_GRILLE = data || { pratiques: null, semaines: {} };
+    MY_GRILLE = data || { debut: null, pratiques: null, semaines: {} };
     if (!GRILLE_DIRTY) renderGrille();   // on ne redessine pas pendant que l'étudiant coche
   });
   // Confirmations et demandes de correction du mentor
@@ -411,6 +419,7 @@ async function onAuthChanged(user) {
   unsubConfirmations = window.AbbaSync.watchMyConfirmations(user.uid, (data) => {
     MY_CONFIRMATIONS = data || {};
     renderRencontresPanel();
+    renderEcoListe();
   });
 }
 
@@ -1852,8 +1861,8 @@ const PRATIQUES_PROPOSEES = [   // dans l'ordre de la journée ; le bilan du soi
 ];
 const MAX_PRATIQUES = 15;
 const NB_SEMAINES = 26;
-const JOURS_COURTS = ["L", "M", "M", "J", "V", "S", "D"];
-let MY_GRILLE = { pratiques: null, semaines: {} };
+const JOURS_COURTS = ["L", "M", "M", "J", "V", "S", "D"];   // lundi en premier
+let MY_GRILLE = { debut: null, pratiques: null, semaines: {} };
 let GRILLE_SEMAINE = null;
 let GRILLE_DIRTY = false;
 let GRILLE_CHOIX_OUVERT = false;
@@ -1869,19 +1878,22 @@ function normaliserPratiques(liste) {
 function pratiquesActives() {
   return normaliserPratiques((MY_GRILLE.pratiques && MY_GRILLE.pratiques.length) ? MY_GRILLE.pratiques : PRATIQUES_PROPOSEES);
 }
-function debutGrille() {
-  const d = MY_PDP?.s1?.dateDebut;
-  const t = d ? new Date(d + "T12:00:00") : null;
+const isoJour = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+function debutChoisi() {   // le jour où la personne a touché « Commencer »
+  const t = MY_GRILLE.debut ? new Date(MY_GRILLE.debut + "T12:00:00") : null;
   return t && !isNaN(t) ? t : null;
 }
-function jourDeSemaine(n, i) {   // date du jour i (0 = lundi) de la semaine n, à partir du début du coaching
-  const t = debutGrille(); if (!t) return null;
-  const x = new Date(t.getTime() + ((n - 1) * 7 + i) * 864e5);
-  return x;
+function lundiDebut() {    // lundi de la semaine où la grille a commencé : la semaine va toujours du lundi au dimanche
+  const t = debutChoisi(); if (!t) return null;
+  return new Date(t.getTime() - ((t.getDay() + 6) % 7) * 864e5);
+}
+function jourDeSemaine(n, i) {   // i = 0 lundi … 6 dimanche
+  const l = lundiDebut(); if (!l) return null;
+  return new Date(l.getTime() + ((n - 1) * 7 + i) * 864e5);
 }
 function semaineCourante() {
-  const t = debutGrille(); if (!t) return 1;
-  return Math.min(NB_SEMAINES, Math.max(1, Math.floor((Date.now() - t.getTime()) / (7 * 864e5)) + 1));
+  const l = lundiDebut(); if (!l) return 1;
+  return Math.min(NB_SEMAINES, Math.max(1, Math.floor((Date.now() - l.getTime()) / (7 * 864e5)) + 1));
 }
 function fmtJM(d) { return d ? d.getDate() + "/" + (d.getMonth() + 1) : ""; }
 
@@ -1892,15 +1904,25 @@ function renderGrille() {
 function renderGrilleCorps() {
   const zone = document.getElementById("grilleZone");
   if (!zone) return;
+  if (!MY_GRILLE.debut) {
+    zone.innerHTML = `<div class="gr-start">
+      <p><strong>Prêt à commencer ?</strong></p>
+      <p class="settings-hint">Ta grille compte 26 semaines, du lundi au dimanche. Elle démarre le jour où tu touches le bouton ci-dessous : les jours avant ce moment ne comptent pas.</p>
+      <button type="button" class="btn-primary" id="gr-commencer" style="width:100%;">▶ Commencer ma grille aujourd’hui</button>
+      <p class="auth-error" id="gr-start-err"></p>
+    </div>`;
+    return;
+  }
   if (GRILLE_SEMAINE == null) GRILLE_SEMAINE = semaineCourante();
   const n = GRILLE_SEMAINE, cle = "s" + n;
   const sem = MY_GRILLE.semaines[cle] || {};
   const prat = pratiquesActives();
 
-  const LETTRES = ["D", "L", "M", "M", "J", "V", "S"];
-  const entetes = [0,1,2,3,4,5,6].map(i => { const d = jourDeSemaine(n, i); return `<th>${d ? LETTRES[d.getDay()] : "J" + (i + 1)}${d ? `<small>${fmtJM(d)}</small>` : ""}</th>`; }).join("");
-  const lignes = prat.map(p => `<tr><td class="gr-label">${escapeAttr(p.label)}</td>${[0,1,2,3,4,5,6].map(i =>
-    `<td><input type="checkbox" class="gr-case" data-p="${escapeAttr(p.id)}" data-j="${i}" ${(sem.coches?.[p.id] || [])[i] ? "checked" : ""}></td>`).join("")}</tr>`).join("");
+  const aujourdhui = isoJour(new Date()), debutISO = MY_GRILLE.debut;
+  const entetes = [0,1,2,3,4,5,6].map(i => { const d = jourDeSemaine(n, i); return `<th>${JOURS_COURTS[i]}<small>${fmtJM(d)}</small></th>`; }).join("");
+  const lignes = prat.map(p => `<tr><td class="gr-label">${escapeAttr(p.label)}</td>${[0,1,2,3,4,5,6].map(i => {
+      const j = isoJour(jourDeSemaine(n, i)), hors = j < debutISO || j > aujourdhui;   // avant le début ou dans le futur : pas de case
+      return `<td><input type="checkbox" class="gr-case" data-p="${escapeAttr(p.id)}" data-j="${i}" ${(sem.coches?.[p.id] || [])[i] ? "checked" : ""} ${hors ? "disabled" : ""}></td>`; }).join("")}</tr>`).join("");
   const debut = jourDeSemaine(n, 0), fin = jourDeSemaine(n, 6);
 
   zone.innerHTML = `
@@ -1909,7 +1931,7 @@ function renderGrilleCorps() {
         const a = jourDeSemaine(i + 1, 0), b = jourDeSemaine(i + 1, 6);
         return `<option value="${i + 1}" ${i + 1 === n ? "selected" : ""}>Semaine ${i + 1}${a ? ` (${fmtJM(a)} – ${fmtJM(b)})` : ""}</option>`; }).join("")}</select>
     </label>
-    ${debut ? "" : `<p class="settings-hint">Les dates apparaîtront quand tu auras renseigné la date de début dans l’étape S1 du PDP.</p>`}
+    <p class="settings-hint">Démarrée le ${escapeAttr(MY_GRILLE.debut.split("-").reverse().join("/"))}. Tu coches une case le jour même ; les jours à venir restent fermés.</p>
     <div class="gr-wrap"><table class="gr-table"><thead><tr><th class="gr-label">Pratiques</th>${entetes}</tr></thead><tbody>${lignes}</tbody></table></div>
     <p class="settings-hint" id="gr-pct"></p>
     <button type="button" class="link-btn" id="gr-choix-btn">${GRILLE_CHOIX_OUVERT ? "Fermer la liste" : "✎ Modifier ma liste de pratiques"}</button>
@@ -1943,6 +1965,14 @@ function lireCoches() {
   });
   return coches;
 }
+async function commencerGrille() {
+  const err = document.getElementById("gr-start-err");
+  try {
+    const jour = isoJour(new Date());
+    await window.AbbaSync.saveDebutGrille(CURRENT_USER.uid, jour);
+    MY_GRILLE = { ...MY_GRILLE, debut: jour }; GRILLE_SEMAINE = null; GRILLE_DIRTY = false; renderGrille();
+  } catch (e) { console.error(e); if (err) err.textContent = "Impossible de démarrer pour le moment. Vérifie ta connexion et réessaie."; }
+}
 function majPctGrille() {
   const cases = document.querySelectorAll("#grilleZone .gr-case");
   const el = document.getElementById("gr-pct"); if (!el || !cases.length) return;
@@ -1961,6 +1991,7 @@ function setupGrille() {
   });
   zone.addEventListener("click", async (e) => {
     const id = e.target.id;
+    if (id === "gr-commencer") { await commencerGrille(); return; }
     if (id === "gr-choix-btn") { GRILLE_CHOIX_OUVERT = !GRILLE_CHOIX_OUVERT; document.getElementById("gr-choix").hidden = !GRILLE_CHOIX_OUVERT; e.target.textContent = GRILLE_CHOIX_OUVERT ? "Fermer la liste" : "✎ Modifier ma liste de pratiques"; }
     else if (id === "gr-perso-btn") {
       const inp = document.getElementById("gr-perso"); const t = inp.value.trim(); if (!t) return;
@@ -2051,6 +2082,88 @@ async function ouvrirVersetsBible(refs, citation) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// SUIVI ÉCONOMIQUE MENSUEL (3d)
+// L'étudiant note chaque mois ses revenus et ses dépenses ; le bénéfice net est calculé.
+// Visible seulement par lui et son mentor (pas par la Trésorière). L'application ne manipule jamais d'argent.
+// Le calcul 5 % + 5 % n'existe pas ici : il relève de l'application SmartGarden.
+// ─────────────────────────────────────────────────────────────
+let MY_ECO = { mois: {} };
+let unsubEco = null;
+let ECO_DIRTY = false;
+const fcfa = (n) => (Number(n) || 0).toLocaleString("fr-FR") + " FCFA";
+const moisAujourdhui = () => isoJour(new Date()).slice(0, 7);
+function libelleMois(cle) {
+  const [a, m] = String(cle).split("-");
+  const noms = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
+  return (noms[Number(m) - 1] || cle) + " " + a;
+}
+function ecoVuValide(cle) {   // le mentor a vu CES chiffres (s'ils changent, la mention tombe)
+  const v = MY_CONFIRMATIONS.economie?.[cle], d = MY_ECO.mois?.[cle];
+  return !!(v && v.vu && d && Number(v.revenus) === Number(d.revenus) && Number(v.depenses) === Number(d.depenses));
+}
+function renderEconomie() {
+  const zone = document.getElementById("ecoZone"); if (!zone) return;
+  zone.innerHTML = `
+    <p class="settings-hint">Chaque mois, note ce que ton activité t’a rapporté et ce qu’elle t’a coûté. L’application ne manipule jamais d’argent : c’est un simple cahier. Seuls toi et ton mentor voyez ces chiffres.</p>
+    <label class="field"><span>Mois</span><input type="month" class="text-input" id="eco-mois" value="${moisAujourdhui()}"></label>
+    <label class="field"><span>Revenus du mois (FCFA)</span><input type="number" inputmode="numeric" min="0" class="text-input" id="eco-rev" placeholder="0"></label>
+    <label class="field"><span>Dépenses du mois (FCFA)</span><input type="number" inputmode="numeric" min="0" class="text-input" id="eco-dep" placeholder="0"></label>
+    <p class="eco-net" id="eco-net"></p>
+    <label class="field"><span>Note (facultatif)</span><textarea class="text-input" rows="2" id="eco-note" placeholder="Ce qui a marché, ce qui a coûté plus cher que prévu…"></textarea></label>
+    <button type="button" class="btn-primary" id="eco-save" style="width:100%;">Enregistrer ce mois</button>
+    <p class="settings-hint" id="eco-msg" style="text-align:center;"></p>
+    <div id="eco-liste"></div>`;
+  chargerMoisEco();
+  renderEcoListe();
+}
+function chargerMoisEco() {
+  const cle = document.getElementById("eco-mois")?.value; if (!cle) return;
+  const d = MY_ECO.mois?.[cle] || {};
+  document.getElementById("eco-rev").value = d.revenus ?? "";
+  document.getElementById("eco-dep").value = d.depenses ?? "";
+  document.getElementById("eco-note").value = d.note || "";
+  ECO_DIRTY = false; majNetEco();
+}
+function majNetEco() {
+  const r = Number(document.getElementById("eco-rev")?.value) || 0, d = Number(document.getElementById("eco-dep")?.value) || 0;
+  const el = document.getElementById("eco-net"); if (!el) return;
+  const net = r - d;
+  el.textContent = `Bénéfice net : ${net < 0 ? "−" : ""}${fcfa(Math.abs(net))}${net < 0 ? " (perte)" : ""}`;
+  el.classList.toggle("perte", net < 0);
+}
+function renderEcoListe() {
+  const zone = document.getElementById("eco-liste"); if (!zone) return;
+  const cles = Object.keys(MY_ECO.mois || {}).sort().reverse();
+  if (!cles.length) { zone.innerHTML = ""; return; }
+  zone.innerHTML = `<hr style="border:0;border-top:1px dashed var(--line);margin:14px 0;"><p class="eyebrow">Mes mois enregistrés</p>` + cles.map(k => {
+    const d = MY_ECO.mois[k], net = (Number(d.revenus) || 0) - (Number(d.depenses) || 0);
+    return `<div class="eco-ligne"><strong>${escapeAttr(libelleMois(k))}</strong>
+      <span>Revenus ${fcfa(d.revenus)} · Dépenses ${fcfa(d.depenses)}</span>
+      <span class="${net < 0 ? "perte" : ""}">Net : ${net < 0 ? "−" : ""}${fcfa(Math.abs(net))}</span>
+      ${ecoVuValide(k) ? `<span class="badge-statut ok">✓ vu par ton mentor</span>` : `<span class="badge-statut att">⏳ pas encore vu par ton mentor</span>`}</div>`;
+  }).join("");
+}
+function setupEconomie() {
+  const zone = document.getElementById("ecoZone");
+  if (!zone || zone.dataset.bound) return;
+  zone.dataset.bound = "1";
+  zone.addEventListener("input", (e) => { if (e.target.id === "eco-rev" || e.target.id === "eco-dep" || e.target.id === "eco-note") { ECO_DIRTY = true; majNetEco(); } });
+  zone.addEventListener("change", (e) => { if (e.target.id === "eco-mois") chargerMoisEco(); });
+  zone.addEventListener("click", async (e) => {
+    if (e.target.id !== "eco-save") return;
+    const cle = document.getElementById("eco-mois").value, msg = document.getElementById("eco-msg");
+    if (!cle) { msg.textContent = "Choisis le mois."; return; }
+    const revenus = Number(document.getElementById("eco-rev").value) || 0, depenses = Number(document.getElementById("eco-dep").value) || 0;
+    try {
+      await window.AbbaSync.saveMoisEco(CURRENT_USER.uid, cle, { revenus, depenses, note: document.getElementById("eco-note").value });
+      MY_ECO = { mois: { ...MY_ECO.mois, [cle]: { ...(MY_ECO.mois[cle] || {}), revenus, depenses, note: document.getElementById("eco-note").value } } };
+      ECO_DIRTY = false; msg.textContent = "✓ Mois enregistré"; renderEcoListe();
+    } catch (e2) { console.error(e2); msg.textContent = "Impossible d’enregistrer. Vérifie ta connexion et réessaie."; }
+  });
+  renderEconomie();
+}
+
+// ─────────────────────────────────────────────────────────────
 // ONGLET DISCIPLINE — bascule Grille / Déclaration
 // ─────────────────────────────────────────────────────────────
 // Déclaration principale (même texte que dans ABBA Parcours), à lire ou à écouter (voix de l'appareil, gratuite)
@@ -2114,6 +2227,7 @@ function setupDiscipline() {
     panel.querySelectorAll(".seg-btn").forEach(x => x.classList.toggle("active", x === b));
     document.getElementById("seg-grille").hidden = b.dataset.seg !== "grille";
     document.getElementById("seg-declaration").hidden = b.dataset.seg !== "declaration";
+    document.getElementById("seg-economie").hidden = b.dataset.seg !== "economie";
     if (b.dataset.seg === "declaration") renderDeclaration();
   }));
   document.getElementById("declTexte").addEventListener("click", (e) => {
@@ -2189,6 +2303,20 @@ window.showRencontresMentor = async function(uid) {
   try { [r, c] = await Promise.all([window.AbbaSync.getRencontresOf(uid), window.AbbaSync.getConfirmations(uid)]); }
   catch (e) { console.error(e); alert("Impossible de lire les rencontres."); return; }
 
+  let ecoHtml = "";
+  try {
+    const eco = await window.AbbaSync.getEconomieOf(uid);
+    const cles = Object.keys(eco.mois || {}).sort().reverse().slice(0, 6);
+    if (cles.length) {
+      window.__ecoCache = { uid, mois: eco.mois };
+      ecoHtml = `<div class="pdp-mentor-section"><h3>Suivi économique</h3><p class="settings-hint">Chiffres saisis par l'étudiant. Tu indiques seulement si ils te paraissent plausibles ; l'application ne manipule pas d'argent.</p>` + cles.map(k => {
+        const d = eco.mois[k], net = (Number(d.revenus) || 0) - (Number(d.depenses) || 0);
+        const v = c.economie?.[k], vu = !!(v && v.vu && Number(v.revenus) === Number(d.revenus) && Number(v.depenses) === Number(d.depenses));
+        return `<div class="pdp-mentor-row"><dt>${escapeAttr(libelleMois(k))}</dt><dd>Revenus ${fcfa(d.revenus)} · Dépenses ${fcfa(d.depenses)} · <strong>Net ${net < 0 ? "−" : ""}${fcfa(Math.abs(net))}</strong>${d.note ? "<br>" + escapeAttr(d.note) : ""}<br>${vu ? `<span class="badge-statut ok">✓ vu, plausible</span>` : (estSonMentor ? `<button class="btn-secondary" style="font-size:12px;padding:5px 10px;margin-top:4px;" onclick="marquerVuEco('${uid}','${k}')">✓ Vu, plausible</button>` : `<span class="badge-statut att">pas encore vu</span>`)}</dd></div>`;
+      }).join("") + `</div>`;
+    }
+  } catch (e) { /* mentor non affecté : pas de lecture */ }
+
   let grilleHtml = "";
   try {
     const g = await window.AbbaSync.getGrilleOf(uid);
@@ -2240,12 +2368,21 @@ window.showRencontresMentor = async function(uid) {
       <h2 style="font-family:var(--font-display);color:var(--navy);margin:0 0 6px;">Rencontres — ${escapeAttr(nom)}</h2>
       <p style="font-size:12px;color:var(--ink-soft);margin:0 0 16px;">Tu confirmes ce que l'étudiant a écrit, ou tu lui demandes de le corriger. Tu ne peux jamais modifier son texte.</p>
       ${cartes || "<p class='settings-hint'>Aucune rencontre enregistrée pour le moment.</p>"}
+      ${ecoHtml}
       ${grilleHtml}
       ${estSonMentor ? "" : "<p class='settings-hint'>Seul le mentor affecté peut confirmer ou demander une correction.</p>"}
       <button class="btn-secondary" style="width:100%;margin-top:8px;" onclick="document.getElementById('rencMentorOverlay').remove()">Fermer</button>
     </div>
   </div>`);
   window.__rencCache = { uid, r };
+};
+
+window.marquerVuEco = async function(uid, cle) {
+  const d = window.__ecoCache?.mois?.[cle]; if (!d) return;
+  try {
+    await window.AbbaSync.saveVuEco(uid, cle, { vu: true, revenus: Number(d.revenus) || 0, depenses: Number(d.depenses) || 0, par: CURRENT_USER.email });
+    await window.showRencontresMentor(uid);
+  } catch (e) { console.error(e); alert("Échec de l'enregistrement. Réessaie."); }
 };
 
 window.confirmerRencontre = async function(uid, k) {

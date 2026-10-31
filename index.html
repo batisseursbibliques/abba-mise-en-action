@@ -541,12 +541,18 @@ if ('serviceWorker' in navigator) {
       <div class="panel-head"><h1>Discipline</h1></div>
       <div class="seg-switch">
         <button type="button" class="seg-btn active" data-seg="grille">📅 Ma grille</button>
-        <button type="button" class="seg-btn" data-seg="declaration">✦ Ma déclaration</button>
+        <button type="button" class="seg-btn" data-seg="declaration">✦ Déclaration</button>
+        <button type="button" class="seg-btn" data-seg="economie">💰 Économie</button>
       </div>
 
       <div class="card" id="seg-grille">
         <p class="settings-hint">Chaque jour, coche ce que tu as fait. En fin de semaine, note ta semaine, écris une victoire et un défi. 26 semaines.</p>
         <div id="grilleZone"><p class="settings-hint">Chargement…</p></div>
+      </div>
+
+      <div class="card" id="seg-economie" hidden>
+        <p class="eyebrow">Suivi économique mensuel</p>
+        <div id="ecoZone"></div>
       </div>
 
       <div class="card" id="seg-declaration" hidden>

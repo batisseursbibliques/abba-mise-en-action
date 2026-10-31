@@ -261,7 +261,7 @@ async function saveRencontre(uid, moisKey, data) {
 // ============================================================
 function watchMyGrille(uid, callback) {
   return watchSharedAndPrive(uid, "mea_semaines", (shared, prive) => {
-    const out = { pratiques: shared.pratiques || null, semaines: { ...(shared.semaines || {}) } };
+    const out = { debut: shared.debut || null, pratiques: shared.pratiques || null, semaines: { ...(shared.semaines || {}) } };
     for (const [k, r] of Object.entries(prive.semaines || {})) {
       if (out.semaines[k] && r && r.defi !== undefined) out.semaines[k] = { ...out.semaines[k], defi: r.defi };
     }
@@ -279,12 +279,36 @@ async function saveSemaine(uid, cle, data, pratiques) {
   lot.set(privRef(uid, "mea_semaines"), shared, { merge: true });
   await lot.commit();
 }
+async function saveDebutGrille(uid, jourISO) {
+  await setDoc(privRef(uid, "mea_semaines"), { debut: jourISO, updatedAt: serverTimestamp() }, { merge: true });
+}
 async function savePratiques(uid, pratiques) {
   await setDoc(privRef(uid, "mea_semaines"), { pratiques, updatedAt: serverTimestamp() }, { merge: true });
 }
 async function getGrilleOf(uid) {
   const snap = await getDoc(privRef(uid, "mea_semaines"));
   return snap.exists() ? snap.data() : {};
+}
+
+// ============================================================
+// SUIVI ÉCONOMIQUE MENSUEL
+// /users/{uid}/priv/mea_economie — { mois: { "2026-11": { revenus, depenses, note } } }
+// Lisible seulement par l'étudiant et son mentor affecté (pas par la Trésorière).
+// La mention « vu, plausible » du mentor est écrite dans /mea_confirmations/{uid}.economie.
+// ============================================================
+function watchMyEconomie(uid, callback) {
+  return onSnapshot(privRef(uid, "mea_economie"), (snap) => callback(snap.exists() ? snap.data() : {}),
+    (err) => { console.error("watch mea_economie:", err); callback({}); });
+}
+async function saveMoisEco(uid, cle, data) {
+  await setDoc(privRef(uid, "mea_economie"), { mois: { [cle]: { ...data, updatedAt: serverTimestamp() } }, updatedAt: serverTimestamp() }, { merge: true });
+}
+async function getEconomieOf(uid) {
+  const snap = await getDoc(privRef(uid, "mea_economie"));
+  return snap.exists() ? snap.data() : {};
+}
+async function saveVuEco(uid, cle, data) {
+  await setDoc(doc(db, "mea_confirmations", uid), { economie: { [cle]: { ...data, at: new Date().toISOString() } } }, { merge: true });
 }
 
 // ============================================================
@@ -515,7 +539,8 @@ window.AbbaSync = {
   getMyAssignment, loadAllAssignments,
   watchMyPDP, saveMyPDP,
   watchMyRencontres, saveRencontre,
-  watchMyGrille, saveSemaine, savePratiques, getGrilleOf,
+  watchMyEconomie, saveMoisEco, getEconomieOf, saveVuEco,
+  watchMyGrille, saveSemaine, savePratiques, saveDebutGrille, getGrilleOf,
   watchMyConfirmations, getConfirmations, saveDerniereConfirmee, getRencontresOf, saveConfirmation,
   saveSummary, loadAllSummaries, loadMySummaries,
   watchMyPDPOnce: readPDPOnce,
