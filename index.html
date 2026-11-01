@@ -9,6 +9,7 @@
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="stylesheet" href="style.css">
+<script src="i18n.js"></script>
 <script>
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js');
@@ -23,6 +24,7 @@ if ('serviceWorker' in navigator) {
     <img src="logo.png" alt="Logo ABBA" class="auth-logo">
     <h1>Mise en Action</h1>
     <p class="auth-sub">Phase 2 — Ton plan de développement</p>
+    <div data-no-i18n style="margin:8px 0 12px;"><label class="field"><span>Langue · Language</span><select data-lang-select class="text-input"><option value="fr">Français</option><option value="en">English</option></select></label></div>
 
     <form id="loginForm" class="auth-form">
       <label class="field"><span>E-mail</span>
@@ -106,6 +108,11 @@ if ('serviceWorker' in navigator) {
         <p class="eyebrow">👁️ Suivi des Bâtisseurs</p>
         <p class="settings-hint">Vue d'ensemble des Bâtisseurs que tu accompagnes.</p>
         <button class="link-btn" data-goto="suivi">Ouvrir Suivi →</button>
+      </div>
+
+      <div class="card settings-card">
+        <p class="eyebrow">Langue</p>
+        <div data-no-i18n style="margin:8px 0 12px;"><label class="field"><span>Langue · Language</span><select data-lang-select class="text-input"><option value="fr">Français</option><option value="en">English</option></select></label></div>
       </div>
 
       <div class="card settings-card">

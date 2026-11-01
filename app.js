@@ -1,4 +1,7 @@
 import { estNatif, lireNatif, pauseNatif } from "./voixNative.js";
+// Langue d'affichage (français par défaut ; anglais si choisi dans le sélecteur de langue)
+const LANG_EN = () => !!(window.I18N && window.I18N.lang === "en");
+const LOC = () => (LANG_EN() ? "en-GB" : "fr-FR");
 /* ============================================================
    ABBA Mise en Action — app.js
    Phase 2 du Parcours Bâtisseur
@@ -117,7 +120,7 @@ async function verifierNumeroSaisi(user) {
   const choixPays = paysCompte ? "" : `
     <label style="display:block;margin-top:8px;">Ton pays
       <select id="certPaysSel" class="text-input"><option value="">— Choisir —</option>${
-        CODES_PAYS.map(c => ({ c, n: nomPays(c) })).sort((a, b) => a.n.localeCompare(b.n, "fr"))
+        CODES_PAYS.map(c => ({ c, n: nomPays(c) })).sort((a, b) => a.n.localeCompare(b.n, LANG_EN() ? "en" : "fr"))
           .map(x => `<option value="${x.c}">${escapeAttr(x.n)}</option>`).join("")}</select>
     </label>`;
   res.innerHTML = `
@@ -338,8 +341,8 @@ async function onAuthChanged(user) {
       const cp = await window.AbbaSync.getComptePaiement(user.uid);
       if (cp && cp.actif !== false && Number(cp.paye || 0) < Number(cp.total ?? 5000)) {
         afficherVerrou(`<h2>🔒 Mise en Action</h2>
-          <p>La Mise en Action s’ouvre une fois les ${Number(cp.total ?? 5000).toLocaleString("fr-FR")} F du Parcours payés.</p>
-          <p><strong>Versé : ${Number(cp.paye || 0).toLocaleString("fr-FR")} F sur ${Number(cp.total ?? 5000).toLocaleString("fr-FR")} F.</strong></p>
+          <p>La Mise en Action s’ouvre une fois les ${Number(cp.total ?? 5000).toLocaleString(LOC())} F du Parcours payés.</p>
+          <p><strong>Versé : ${Number(cp.paye || 0).toLocaleString(LOC())} F sur ${Number(cp.total ?? 5000).toLocaleString(LOC())} F.</strong></p>
           <p>Termine ton paiement dans le Parcours Bâtisseur (carte « Mon paiement » de l’accueil), puis reviens ici.</p>
           <p><a href="../ABBA-Parcours/">← Retour au Parcours Bâtisseur</a></p>`);
         return;
@@ -1230,7 +1233,7 @@ function afficherReperesS3() {
 let REPRISE_EN_COURS = false;
 
 function nomPays(code) {
-  try { return new Intl.DisplayNames(["fr"], { type: "region" }).of(code) || code; } catch (e) { return code; }
+  try { return new Intl.DisplayNames([LANG_EN() ? "en" : "fr"], { type: "region" }).of(code) || code; } catch (e) { return code; }
 }
 
 async function afficherReprise() {
@@ -2131,7 +2134,7 @@ async function ouvrirVersetsBible(refs, citation) {
 let MY_ECO = { mois: {} };
 let unsubEco = null;
 let ECO_DIRTY = false;
-const fcfa = (n) => (Number(n) || 0).toLocaleString("fr-FR") + " FCFA";
+const fcfa = (n) => (Number(n) || 0).toLocaleString(LOC()) + " FCFA";
 const moisAujourdhui = () => isoJour(new Date()).slice(0, 7);
 function libelleMois(cle) {
   const [a, m] = String(cle).split("-");
@@ -2230,8 +2233,9 @@ function declMorceaux() {
 }
 function declVoix() {
   const vs = (window.speechSynthesis && speechSynthesis.getVoices()) || [];
-  const fr = vs.filter(v => (v.lang || "").toLowerCase().startsWith("fr"));
-  return fr.find(v => /fr[-_]FR/i.test(v.lang)) || fr[0] || null;
+  const code = LANG_EN() ? "en" : "fr";
+  const ok = vs.filter(v => (v.lang || "").toLowerCase().startsWith(code));
+  return ok.find(v => new RegExp(LANG_EN() ? "en[-_](GB|US)" : "fr[-_]FR", "i").test(v.lang)) || ok[0] || null;
 }
 function declMarquer() {
   document.querySelectorAll("#declTexte .tts-now").forEach(e => e.classList.remove("tts-now"));
@@ -2249,7 +2253,7 @@ function declDire(i) {
   if (i >= DECL.morceaux.length) { declArreter(); return; }
   DECL.i = i; DECL.etat = "lecture"; declBoutons(); declMarquer();
   const u = new SpeechSynthesisUtterance(DECL.morceaux[i].t);
-  u.lang = "fr-FR"; u.rate = DECL.vitesse;
+  u.lang = LANG_EN() ? "en-GB" : "fr-FR"; u.rate = DECL.vitesse;
   const v = declVoix(); if (v) u.voice = v;
   u.onend = () => { if (jeton === DECL.jeton && DECL.etat === "lecture") declDire(i + 1); };
   u.onerror = (e) => { if (jeton === DECL.jeton && e.error !== "canceled" && e.error !== "interrupted") { document.getElementById("declMsg").textContent = "La lecture à voix haute n'a pas pu démarrer sur cet appareil."; declArreter(); } };
@@ -2267,7 +2271,7 @@ function declLire(i) {
   const jeton = DECL.jeton;
   DECL.i = i; DECL.etat = "lecture"; declBoutons(); declMarquer();
   lireNatif({
-    textes: DECL.morceaux.map(m => m.t), depuis: i, vitesse: DECL.vitesse, titre: "Ma déclaration", details: "ABBA Mise en Action", langue: "fr",
+    textes: DECL.morceaux.map(m => m.t), depuis: i, vitesse: DECL.vitesse, titre: "Ma déclaration", details: "ABBA Mise en Action", langue: LANG_EN() ? "en" : "fr",
     onIndex: (ix) => { if (jeton === DECL.jeton) { DECL.i = ix; declMarquer(); } },
     onFin: () => { if (jeton === DECL.jeton) declArreter(); },
     onErreur: () => { if (jeton === DECL.jeton) { document.getElementById("declMsg").textContent = "La lecture à voix haute n'a pas pu démarrer sur cet appareil."; declArreter(); } },
@@ -2339,7 +2343,7 @@ function afficherProchaineRencontre() {
   const d = prochaineRencontreDate();
   if (!d) { el.textContent = "Dès ta première rencontre, fixe avec ton mentor la date de la suivante : elle s'affichera ici."; return; }
   const j = joursDepuis(d);   // positif = passée
-  const jolie = new Date(d + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const jolie = new Date(d + "T12:00:00").toLocaleDateString(LOC(), { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   el.textContent = j == null ? jolie : j < 0 ? `${jolie} (dans ${-j} jour${-j > 1 ? "s" : ""})` : j === 0 ? `${jolie} — c'est aujourd'hui !` : `${jolie} — la date est passée : enregistre ta rencontre.`;
 }
 // Programme (ou annule) les notifications. demander = true : on peut afficher la demande d'autorisation
@@ -3005,7 +3009,7 @@ function voieDe(pdp) { return voieParId((pdp && pdp.s6 && pdp.s6.voie) || (windo
 function fmtDateLongue(iso) {
   if (!iso) return "";
   const d = new Date(String(iso).slice(0, 10) + "T12:00:00");
-  return isNaN(d) ? String(iso) : d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  return isNaN(d) ? String(iso) : d.toLocaleDateString(LOC(), { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 }
 
 // Un service est « confirmé » si le mentor l'a confirmé pour la version actuelle du texte de l'étudiant
@@ -3340,6 +3344,8 @@ window.attribuerCertif = async function(uid, certifId) {
 // EXPORT PDF (phase 5) : « Mon PDP et mon dossier » (étudiant) et « PDP de l'étudiant » (mentor)
 // Le PDF est fabriqué sur le téléphone par la bibliothèque jsPDF : aucune donnée n'est envoyée à un serveur.
 // ─────────────────────────────────────────────────────────────
+// Traduit un texte du système quand l'anglais est choisi (les textes saisis par la personne ne sont jamais changés)
+function trPdf(t) { return LANG_EN() && window.I18N ? window.I18N.t(String(t == null ? "" : t)) : String(t == null ? "" : t); }
 function chargerJsPdf() {
   if (window.jspdf) return Promise.resolve(window.jspdf);
   return new Promise((ok, ko) => {
@@ -3373,19 +3379,19 @@ async function fabriquerPdf({ titre, sousTitre, sections }) {
   doc.setFont("helvetica", "bold"); doc.setFontSize(19); doc.setTextColor(...NAVY);
   doc.splitTextToSize(textePdf(titre), LW).forEach(l => { doc.text(l, M, y + 6); y += 8; });
   doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(...GRIS);
-  doc.text(textePdf(sousTitre), M, y + 3); y += 6;
+  doc.text(textePdf(trPdf(sousTitre)), M, y + 3); y += 6;
   doc.setDrawColor(...OR); doc.setLineWidth(0.8); doc.line(M, y, W - M, y); y += 7;
 
   sections.forEach(sec => {
     place(18);
     doc.setFont("helvetica", "bold"); doc.setFontSize(12.5); doc.setTextColor(...NAVY);
-    doc.splitTextToSize(textePdf(sec.titre), LW).forEach(l => { place(7); doc.text(l, M, y + 4); y += 6.2; });
+    doc.splitTextToSize(textePdf(trPdf(sec.titre)), LW).forEach(l => { place(7); doc.text(l, M, y + 4); y += 6.2; });
     doc.setDrawColor(210, 210, 210); doc.setLineWidth(0.3); doc.line(M, y, W - M, y); y += 3.5;
     (sec.lignes || []).forEach(([lab, val]) => {
-      const lignesVal = doc.setFont("helvetica", "normal").setFontSize(10.5).splitTextToSize(textePdf(val) || "—", LW);
+      const lignesVal = doc.setFont("helvetica", "normal").setFontSize(10.5).splitTextToSize(textePdf(trPdf(val)) || "—", LW);
       place(5 + 5);
       doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.setTextColor(...GRIS);
-      doc.text(textePdf(lab).toUpperCase().slice(0, 90), M, y + 3); y += 4.6;
+      doc.text(textePdf(trPdf(lab)).toUpperCase().slice(0, 90), M, y + 3); y += 4.6;
       doc.setFont("helvetica", "normal"); doc.setFontSize(10.5); doc.setTextColor(30, 30, 30);
       lignesVal.forEach(l => { place(5); doc.text(l, M, y + 3.5); y += 5; });
       y += 2.2;
@@ -3394,10 +3400,10 @@ async function fabriquerPdf({ titre, sousTitre, sections }) {
   });
 
   const n = doc.getNumberOfPages();
-  const date = new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+  const date = new Date().toLocaleDateString(LOC(), { day: "numeric", month: "long", year: "numeric" });
   for (let i = 1; i <= n; i++) {
     doc.setPage(i); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...GRIS);
-    doc.text(textePdf("ABBA - Mise en Action - " + date), M, H - 10);
+    doc.text(textePdf(trPdf("ABBA - Mise en Action -") + " " + date), M, H - 10);
     doc.text(`${i} / ${n}`, W - M, H - 10, { align: "right" });
   }
   return doc.output("blob");
@@ -3419,11 +3425,11 @@ function nomFichierPdf(nom) { return "PDP-" + String(nom || "etudiant").normaliz
 function sectionsDossier() {
   const ev = evaluerDossier(MY_PDP, MY_RENCONTRES, MY_CONFIRMATIONS, MY_SERVICES);
   const st = statutDossier(ev, MY_DOSSIER);
-  const out = [{ titre: "Mon dossier de certification", lignes: [["Statut", TEXTES_DOSSIER[st].titre]].concat(ev.criteres.map((c, i) => ["Condition " + (i + 1), (c.ok ? "[x] " : "[ ] ") + c.texte])) }];
+  const out = [{ titre: "Mon dossier de certification", lignes: [["Statut", trPdf(TEXTES_DOSSIER[st].titre)]].concat(ev.criteres.map((c, i) => [trPdf("Condition") + " " + (i + 1), (c.ok ? "[x] " : "[ ] ") + trPdf(c.texte)])) }];
   const srv = Object.entries(MY_SERVICES);
   if (srv.length) out.push({ titre: "Mes services communautaires", lignes: srv.map(([id, sv]) => {
     const stS = statutService(id, sv);
-    return [fmtDateLongue(sv.date) || "Date non indiquée", [sv.quoi, sv.ou ? "Où : " + sv.ou : "", sv.personnes ? "Personnes touchées : " + sv.personnes : "", sv.appris ? "Appris : " + sv.appris : "", stS === "confirme" ? "Confirmé par le mentor" : stS === "correction" ? "Correction demandée" : "En attente du mentor"].filter(Boolean).join("\n")];
+    return [fmtDateLongue(sv.date) || trPdf("Date non indiquée"), [sv.quoi, sv.ou ? trPdf("Où et pour qui") + " : " + sv.ou : "", sv.personnes ? trPdf("Personnes touchées :") + " " + sv.personnes : "", sv.appris ? trPdf("Ce que j’ai appris") + " : " + sv.appris : "", trPdf(stS === "confirme" ? "Confirmé par le mentor" : stS === "correction" ? "Correction demandée" : "En attente du mentor")].filter(Boolean).join("\n")];
   }) });
   return out;
 }
