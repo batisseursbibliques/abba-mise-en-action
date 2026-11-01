@@ -2354,7 +2354,7 @@ async function programmerRappels(demander) {
   const ln = lnMea();
   if (!estNatif()) return { etat: "navigateur" };
   if (!ln) return { etat: "mise-a-jour" };
-  const r = lireRappels();
+  const r = lireRappels(); r.grille = false;   // le rappel « coche ta journée » de 20 h est supprimé
   try {
     await ln.cancel({ notifications: Object.values(ID_RAP).map(id => ({ id })) });
     if (!r.rencontre && !r.grille) return { etat: "off" };
