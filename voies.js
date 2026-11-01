@@ -340,7 +340,7 @@ window.VOIES_PROJET = [
   {
     id: "abba",
     titre: "Un projet d’ABBA (par exemple SmartGarden)",
-    pour: "Tu portes ou tu rejoins un projet de l’Alliance. Un contrat de partenariat Bâtisseur fixera les règles de ce projet. Il te sera présenté dans l’application, et tu devras l’accepter avant tout calcul de contribution.",
+    pour: "Tu portes ou tu rejoins un projet de l’Alliance. Chaque projet d’ABBA a son propre contrat de partenariat, qui fixe les règles de ce projet. Ce contrat te sera remis par le responsable du projet : lis-le avec lui avant de t’engager.",
     source: "Projets de l’Alliance des Bâtisseurs Bibliques en Action.",
     questions: [
       { id: "q1", label: "Quel projet d’ABBA portes-tu, et quel est ton rôle ?" },
@@ -352,7 +352,7 @@ window.VOIES_PROJET = [
       { periode: "Mois 1", titre: "Comprendre le projet et mon rôle", actions: [
         "Rencontrer le responsable du projet.",
         "Écrire avec lui ton rôle et tes objectifs.",
-        "Lire le contrat de partenariat Bâtisseur quand il te sera présenté."] },
+        "Lire avec le responsable le contrat de partenariat de ce projet, avant de t’engager."] },
       { periode: "Mois 2–3", titre: "Démarrer", actions: [
         "Réaliser les activités qui te sont confiées.",
         "Commencer le suivi mensuel : revenus, dépenses, bénéfice net."] },

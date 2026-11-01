@@ -20,22 +20,25 @@ const DIMENSIONS = [
   { key: "societe",      label: "Sociale",          icone: "🤝" },
 ];
 
+// Les 14 modules du Parcours Bâtisseur (mêmes titres que dans ABBA Parcours) et le module de Parcours à ouvrir pour chacun.
+// Le module 14 est en deux parties dans Parcours (14.1 et 14.2) : il a deux liens.
 const MODULES_14 = [
   "Disciple de Christ",
-  "Guérir des blessures de l'âme",
-  "Cure d'âme personnelle",
+  "Guérir des Blessures de l'Âme",
+  "Cure d'Âme Personnelle",
   "Aimer",
-  "Bâtir le caractère",
-  "Relation avec le Saint-Esprit",
-  "Victoire par la prière",
-  "Le monde spirituel",
-  "Évangélisation / Guérison / Délivrance",
-  "Les ministères de Dieu",
-  "Maîtriser sa santé et son argent",
-  "Les tests de la République",
-  "Premiers secours",
-  "Entrepreneuriat / Leadership / Gestion de projet",
+  "Bâtir le Caractère",
+  "Le Saint-Esprit",
+  "Victoire par la Prière",
+  "Le Monde Spirituel",
+  "Évangélisation, Guérison, Délivrance",
+  "Les Ministères de Dieu",
+  "Maîtriser sa Santé et son Argent",
+  "Citoyenneté Responsable",
+  "Les Gestes de Premiers Secours",
+  "Création de Richesse",
 ];
+const MODULES_14_LIENS = [[["m1", ""]], [["m2", ""]], [["m3", ""]], [["m4", ""]], [["m5", ""]], [["m6", ""]], [["m7", ""]], [["m8", ""]], [["m9", ""]], [["m10", ""]], [["m11", ""]], [["m12", ""]], [["m13", ""]], [["m14", "14.1"], ["m14b", "14.2"]]];
 
 // Échelle des 8 dimensions : 1 à 5 (comme l'auto-évaluation de Parcours).
 // Les anciennes notes sur 10 (données de test) sont ramenées sur 5 à l'affichage.
@@ -807,7 +810,7 @@ function buildS4Modules() {
   MODULES_14.forEach((nom, i) => {
     container.insertAdjacentHTML("beforeend", `
       <div class="module-row">
-        <span class="module-label">${i + 1}. ${nom}</span>
+        <span class="module-label">${i + 1}. <span>${nom}</span> ${MODULES_14_LIENS[i].map(([id, n]) => `<a href="../ABBA-Parcours/#module=${id}" target="_blank" rel="noopener" title="Ouvrir ce module dans le Parcours" style="font-size:12px;white-space:nowrap;margin-left:4px;">📖 ${n ? n : "Ouvrir"}</a>`).join(" ")}</span>
         <select class="module-select" id="s4-mod-${i}" title="Niveau d'assimilation">
           <option value="0">—</option>
           <option value="1">1 — Pas assimilé</option>
@@ -2627,7 +2630,7 @@ function construirePdpHtml(d, nom, progM) {
   const modulesHtml = MODULES_14.map((m, i) => {
     const niveaux = ["—","Pas assimilé","Compris","Application partielle","Application régulière","Maîtrise"];
     const n = d.s4?.modules?.[i] || 0;
-    return `<div class="pdp-mentor-row"><dt>${i+1}. ${m}</dt><dd>${niveaux[n] || "—"}</dd></div>`;
+    return `<div class="pdp-mentor-row"><dt>${i+1}. <span>${m}</span></dt><dd>${niveaux[n] || "—"}</dd></div>`;
   }).join("");
 
   const html = `
