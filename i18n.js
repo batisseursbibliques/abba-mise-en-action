@@ -52,7 +52,8 @@
   }
   const ATTRS = ["placeholder", "title", "aria-label", "alt"];
   function translateAttrs(el) {
-    if (!el.getAttribute || skipEl(el)) return;
+    // un champ de saisie (textarea) peut avoir son texte d'aide traduit : on n'exclut que les zones marquées
+    if (!el.getAttribute || (el.closest && el.closest("[data-no-i18n],.no-i18n"))) return;
     ATTRS.forEach((a) => {
       const v = el.getAttribute(a);
       if (!v) return;

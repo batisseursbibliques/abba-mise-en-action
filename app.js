@@ -567,7 +567,7 @@ function construireMinisteres() {
   const liste = (t, arr) => arr && arr.length ? `<h4>${t}</h4><ul>${arr.map(x => `<li>${escapeAttr(x)}</li>`).join("")}</ul>` : "";
   zone.innerHTML = `<p class="min-intro">${escapeAttr(window.MINISTERES_INTRO || "")}</p>` + (window.MINISTERES || []).map(m => `
     <div class="min-item">
-      <label class="check-item"><input type="radio" name="s5Ministre" value="${m.id}"> <span><strong>${m.id}</strong> — ${escapeAttr(m.nom)}</span></label>
+      <label class="check-item"><input type="radio" name="s5Ministre" value="${m.id}"> <span><strong>${m.id}</strong> — <span>${escapeAttr(m.nom)}</span></span></label>
       <button type="button" class="lien-min" data-min="${m.id}" aria-expanded="false">Comprendre ce ministère ▾</button>
       <div class="min-fiche" id="fiche-${m.id}" hidden>
         <p><strong>Mission principale.</strong> ${escapeAttr(m.mission)}</p>
@@ -1337,6 +1337,12 @@ function updatePdpProgress() {
 
 // Accueil : cercles concentriques (un anneau par condition de la certification)
 function updateAccueilPdpHint() { majAnneauxAccueil(); }
+function prochaineRencontreHtml() {
+  const p = PROCHAINE_RENCONTRE;
+  if (!p) return `<small class="an-min an-proch"><span>Prochaine rencontre :</span> <span>date à fixer avec ton mentor</span></small>`;
+  const reste = p.j == null ? "" : p.j < 0 ? ` <span>(dans ${-p.j} jour${-p.j > 1 ? "s" : ""})</span>` : p.j === 0 ? " <span>— aujourd'hui !</span>" : " <span>— date passée : enregistre ta rencontre</span>";
+  return `<small class="an-min an-proch"><span>Prochaine rencontre :</span> <span>${p.jolie}</span>${reste}</small>`;
+}
 function majAnneauxAccueil() {
   const zone = document.getElementById("accueilAnneaux");
   if (!zone) return;
@@ -1348,9 +1354,9 @@ function majAnneauxAccueil() {
   const jReq = v ? Math.min(2, r.jalonsTotal) : 2;
   const lignes = [
     { goto: "pdp",      couleur: "var(--navy)",  nom: "Plan de développement", pct: prog.pct,                                   valeur: `${prog.pct} %`,                  min: "minimum 80 %" },
-    { goto: "rencontres", couleur: "var(--gold)", nom: "Rencontres",            pct: r.rencontres / 6 * 100,                      valeur: `${r.rencontres} / 6`,            min: "minimum 4" },
+    { goto: "rencontres", couleur: "var(--gold)", nom: "Rencontres",            pct: r.rencontres / 6 * 100,                      valeur: `${r.rencontres} / 6`,            min: "minimum 4", extra: prochaineRencontreHtml() },
     { goto: "bilan",    couleur: "var(--sage)",  nom: "Service communautaire", pct: Math.min(r.services, 1) * 100,               valeur: `${r.services}`,                  min: "minimum 1" },
-    { goto: "pdp",      couleur: "var(--brick)", nom: "Projet personnel",      pct: r.jalonsTotal ? r.jalons / r.jalonsTotal * 100 : 0, valeur: r.jalonsTotal ? `${r.jalons} / ${r.jalonsTotal}` : "—", min: `minimum ${jReq}` },
+    { goto: "pdp:s6",   couleur: "var(--brick)", nom: "Projet personnel",      pct: r.jalonsTotal ? r.jalons / r.jalonsTotal * 100 : 0, valeur: r.jalonsTotal ? `${r.jalons} / ${r.jalonsTotal}` : "—", min: `minimum ${jReq}` },
   ];
   const rayons = [92, 76, 60, 44];
   const cercles = lignes.map((l, i) => {
@@ -1369,10 +1375,15 @@ function majAnneauxAccueil() {
         <span class="an-pastille" style="background:${l.couleur}"></span>
         <span class="an-nom">${l.nom}</span>
         <span class="an-val">${l.valeur}</span>
-        <small class="an-min">${l.min}</small>
+        <small class="an-min">${l.min}</small>${l.extra || ""}
       </button></li>`).join("")}
     </ul>`;
-  zone.querySelectorAll("[data-an-goto]").forEach(b => b.addEventListener("click", () => { const t = document.querySelector(`.tab[data-tab="${b.dataset.anGoto}"]`); if (t) t.click(); }));
+  zone.querySelectorAll("[data-an-goto]").forEach(b => b.addEventListener("click", () => {
+    const [onglet, section] = b.dataset.anGoto.split(":");
+    const t = document.querySelector(`.tab[data-tab="${onglet}"]`); if (t) t.click();
+    if (section) { const st = document.querySelector(`.pdp-tab[data-section="${section}"]`); if (st) st.click(); }
+    window.scrollTo(0, 0);
+  }));
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1702,14 +1713,6 @@ window.saveRencontre = async function(moisKey) {
 function updateAccueilRencontresHint() {
   afficherProchaineRencontre();
   programmerRappels(false);
-  const hint = document.getElementById("accueilRencontresHint");
-  const faites = MOIS_KEYS.filter(k => MY_RENCONTRES[k]?.verrouille).length;
-  const conf = nbConfirmees();
-  const aCorriger = MOIS_KEYS.filter(k => statutRencontre(k) === "correction").length;
-  if (aCorriger) hint.textContent = `✎ Ton mentor demande une correction sur ${aCorriger} rencontre${aCorriger > 1 ? "s" : ""}.`;
-  else if (faites === 0) hint.textContent = "Tes 6 rencontres de suivi avec ton mentor.";
-  else if (conf < 6) hint.textContent = `${conf} / 6 rencontres confirmées par ton mentor (${faites} enregistrée${faites > 1 ? "s" : ""}).`;
-  else hint.textContent = "✓ Les 6 rencontres sont confirmées — consulte ton bilan !";
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -2371,13 +2374,16 @@ function prochaineRencontreDate() {
   for (let i = MOIS_KEYS.length - 1; i >= 0; i--) { const d = MY_RENCONTRES[MOIS_KEYS[i]]; if (d?.verrouille && d.prochaineDate) return d.prochaineDate; }
   return null;
 }
+let PROCHAINE_RENCONTRE = null;   // { jolie, j } ou null : affichée dans la légende « Rencontres » de l'accueil
 function afficherProchaineRencontre() {
-  const el = document.getElementById("accueilProchaine"); if (!el) return;
   const d = prochaineRencontreDate();
-  if (!d) { el.textContent = "Dès ta première rencontre, fixe avec ton mentor la date de la suivante : elle s'affichera ici."; return; }
-  const j = joursDepuis(d);   // positif = passée
-  const jolie = new Date(d + "T12:00:00").toLocaleDateString(LOC(), { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-  el.textContent = j == null ? jolie : j < 0 ? `${jolie} (dans ${-j} jour${-j > 1 ? "s" : ""})` : j === 0 ? `${jolie} — c'est aujourd'hui !` : `${jolie} — la date est passée : enregistre ta rencontre.`;
+  if (!d) PROCHAINE_RENCONTRE = null;
+  else {
+    const j = joursDepuis(d);   // positif = passée
+    const jolie = new Date(d + "T12:00:00").toLocaleDateString(LOC(), { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    PROCHAINE_RENCONTRE = { jolie, j };
+  }
+  majAnneauxAccueil();
 }
 // Programme (ou annule) les notifications. demander = true : on peut afficher la demande d'autorisation
 async function programmerRappels(demander) {

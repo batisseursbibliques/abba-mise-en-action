@@ -634,3 +634,4 @@ input[type="range"]{touch-action:pan-y;}
 .an-nom{font-weight:600;}
 .an-val{font-weight:700;color:var(--navy);}
 .an-min{grid-column:2 / 4;color:var(--ink-soft);font-size:12px;margin-top:2px;}
+.an-proch{color:var(--navy);font-weight:600;}
