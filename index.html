@@ -64,6 +64,7 @@ if ('serviceWorker' in navigator) {
   <nav class="tabs" id="tabs" aria-label="Navigation principale">
     <button class="tab active" data-tab="accueil">Accueil</button>
     <button class="tab" data-tab="pdp">Mon PDP</button>
+    <button class="tab" data-tab="projet">Mon projet</button>
     <button class="tab" data-tab="rencontres">Rencontres</button>
     <button class="tab" data-tab="discipline">Discipline</button>
     <button class="tab" data-tab="bilan">Bilan</button>
@@ -505,6 +506,30 @@ if ('serviceWorker' in navigator) {
     </section><!-- fin panel-pdp -->
 
     <!-- ================= RENCONTRES ================= -->
+    <section class="panel" id="panel-projet">
+      <div class="panel-head">
+        <h1>Mon projet</h1>
+      </div>
+      <div class="card" id="planVoieCard"></div>
+      <div class="card" id="planStatutCard"></div>
+      <div class="card" id="planSuggCard"></div>
+      <div class="card" id="planFormCard">
+        <p class="eyebrow">Ajouter une action de mon choix</p>
+        <label class="field"><span>Nom de l’action</span>
+          <input class="text-input" type="text" id="planNom" maxlength="120" placeholder="Ex. : Acheter le matériel pour commencer"></label>
+        <label class="field"><span>Date limite</span>
+          <input class="text-input" type="date" id="planDate"></label>
+        <label class="field"><span>Heure</span>
+          <input class="text-input" type="time" id="planHeure" value="18:00"></label>
+        <label class="field"><span>Lieu (facultatif)</span>
+          <input class="text-input" type="text" id="planLieu" maxlength="120" placeholder="Où tu feras cette action"></label>
+        <button class="btn-primary" type="button" id="planSaveBtn">Ajouter cette action</button>
+        <button class="btn-secondary" type="button" id="planCancelBtn" style="display:none;margin-top:6px;">Annuler la modification</button>
+        <p class="auth-error" id="planErr"></p>
+      </div>
+      <div class="card" id="planListeCard"></div>
+    </section>
+
     <section class="panel" id="panel-rencontres">
       <div class="panel-head">
         <h1>Rencontres mensuelles</h1>
@@ -758,6 +783,10 @@ if ('serviceWorker' in navigator) {
     <button class="bnav-btn" data-tab="pdp">
       <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 4 H18 V20 L12 17 L6 20 Z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
       <span>Mon PDP</span>
+    </button>
+    <button class="bnav-btn" data-tab="projet">
+      <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 21 V4 M6 5 H17 L14.5 9 L17 13 H6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+      <span>Projet</span>
     </button>
     <button class="bnav-btn" data-tab="rencontres">
       <svg viewBox="0 0 24 24" width="20" height="20"><rect x="4" y="4" width="16" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 2 V6 M16 2 V6 M4 10 H20" stroke="currentColor" stroke-width="1.5"/></svg>

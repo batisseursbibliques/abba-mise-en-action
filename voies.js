@@ -4,9 +4,8 @@
 //
 // Pour chaque voie :
 //   questions : ce que l'étudiant doit réfléchir et écrire (spécifique à la voie)
-//   etapes    : le déroulé conseillé sur 6 mois (3 temps : mois 1, mois 2-3, mois 4-6)
+//   etapes    : le déroulé conseillé sur 6 mois (3 temps : mois 1, mois 2-3, mois 4-6) — proposé comme SUGGESTIONS d'actions dans l'onglet « Mon projet »
 //   indicateurs : ce qu'on suit pour savoir si ça avance
-//   jalons    : 3 ou 4 étapes précises que le MENTOR valide (ou fait reprendre) au fil des 6 mois
 //   revenuLabel : ce que « revenus visés » veut dire pour cette voie
 window.VOIES_PROJET = [
   {
@@ -40,12 +39,6 @@ window.VOIES_PROJET = [
       "Revenu du mois : ce que tu as vendu moins ce que tu as dépensé",
       "Régularité : nombre de semaines avec au moins une vente",
       "Argent mis de côté chaque mois",
-    ],
-    jalons: [
-      { id: "zero-j1", label: "L’idée est décrite par écrit : le problème, le client visé et un objectif chiffré avec une date." },
-      { id: "zero-j2", label: "Trois personnes ont payé (même peu) pour ton produit ou ton service." },
-      { id: "zero-j3", label: "Des comptes simples sont tenus chaque mois : ventes, dépenses, bénéfice." },
-      { id: "zero-j4", label: "Un premier revenu régulier pendant au moins deux mois." },
     ],
     revenuLabel: "Revenu mensuel visé à 6 mois (bénéfice, pas seulement les ventes), en FCFA",
   },
@@ -82,11 +75,6 @@ window.VOIES_PROJET = [
       "Conversation d’évolution demandée ou tenue",
       "Part du salaire mise de côté chaque mois",
     ],
-    jalons: [
-      { id: "evoluer-j1", label: "Le point est fait par écrit : forces, manques, objectif à un an et à trois ans." },
-      { id: "evoluer-j2", label: "Une nouvelle compétence est apprise, ou une formation est commencée." },
-      { id: "evoluer-j3", label: "Des résultats concrets sont réunis et un entretien d’évolution est demandé ou tenu." },
-    ],
     revenuLabel: "Revenu mensuel visé à 6 mois (salaire ou prime), en FCFA",
   },
 
@@ -121,12 +109,6 @@ window.VOIES_PROJET = [
       "Nombre de personnes qui ont payé",
       "Revenu du nouveau métier",
       "Épargne d’urgence, en mois de dépenses",
-    ],
-    jalons: [
-      { id: "reconversion-j1", label: "L’appel est clarifié par écrit et partagé avec ta famille." },
-      { id: "reconversion-j2", label: "Une formation est commencée sans arrêter ton revenu actuel." },
-      { id: "reconversion-j3", label: "Trois personnes ont payé pour ton nouveau service (test à petite échelle)." },
-      { id: "reconversion-j4", label: "Le seuil est fixé : à partir de quel revenu tu pourras quitter l’ancien emploi." },
     ],
     revenuLabel: "Revenu mensuel du nouveau métier visé à 6 mois, en FCFA",
   },
@@ -166,12 +148,6 @@ window.VOIES_PROJET = [
       "Revenu mensuel régulier",
       "Montant remboursé et montant mis de côté",
     ],
-    jalons: [
-      { id: "reconstruire-j1", label: "L’inventaire est écrit : ce qu’il te reste, tes dettes et tes dépenses." },
-      { id: "reconstruire-j2", label: "Le budget de survie est tenu pendant deux mois." },
-      { id: "reconstruire-j3", label: "Chaque créancier est rencontré et un accord de remboursement réaliste est posé." },
-      { id: "reconstruire-j4", label: "Un premier revenu régulier existe et un plan en trois étapes, avec des dates, est écrit." },
-    ],
     revenuLabel: "Revenu mensuel minimal à atteindre pour stabiliser ta situation, en FCFA",
   },
 
@@ -208,12 +184,6 @@ window.VOIES_PROJET = [
       "Formation, bénévolat ou stage réalisé",
       "Entretiens obtenus, offre reçue",
     ],
-    jalons: [
-      { id: "emploi-j1", label: "Un CV d’une page est prêt et relu, et ta phrase « ce que j’offre » est écrite." },
-      { id: "emploi-j2", label: "Les dix personnes de ta liste sont informées." },
-      { id: "emploi-j3", label: "Le rythme de la semaine est tenu pendant huit semaines (contacts, candidatures, une démarche)." },
-      { id: "emploi-j4", label: "Le point des 90 jours est fait par écrit : ce qui a marché, ce qu’on change." },
-    ],
     revenuLabel: "Revenu mensuel visé à 6 mois (salaire ou activité), en FCFA",
   },
 
@@ -247,12 +217,6 @@ window.VOIES_PROJET = [
       "Marge et dépenses fixes",
       "Bénéfice du mois et trésorerie disponible",
       "Impayés : combien et depuis quand",
-    ],
-    jalons: [
-      { id: "entreprise-j1", label: "L’argent de l’entreprise est séparé du tien et les comptes sont tenus chaque mois." },
-      { id: "entreprise-j2", label: "Les prix sont recalculés avec la marge, et des devis et factures sont utilisés." },
-      { id: "entreprise-j3", label: "Le pilotage mensuel (les six chiffres) est fait trois mois de suite." },
-      { id: "entreprise-j4", label: "Les démarches pour être en règle sont engagées ou à jour." },
     ],
     revenuLabel: "Bénéfice mensuel visé à 6 mois, en FCFA",
   },
@@ -290,11 +254,6 @@ window.VOIES_PROJET = [
       "Respect du plan que tu t’es donné",
       "Si tu soutiens un bâtisseur : étapes de son projet atteintes",
     ],
-    jalons: [
-      { id: "investir-j1", label: "La base est en ordre : plus de dette chère, épargne d’urgence, assurances de base." },
-      { id: "investir-j2", label: "Le plan est écrit : objectif chiffré, durée, somme mensuelle et répartition." },
-      { id: "investir-j3", label: "L’investissement régulier est fait trois mois de suite, ou le soutien concret est apporté au bâtisseur." },
-    ],
     revenuLabel: "Somme mensuelle visée à investir ou à apporter, en FCFA",
   },
 
@@ -329,11 +288,6 @@ window.VOIES_PROJET = [
       "Retours reçus de personnes du métier",
       "Compétences acquises, comparées à ta liste de départ",
     ],
-    jalons: [
-      { id: "competences-j1", label: "La carte est écrite : activité visée, compétences acquises et compétences manquantes." },
-      { id: "competences-j2", label: "La formation est suivie régulièrement." },
-      { id: "competences-j3", label: "Une pratique réelle est accomplie (bénévolat, stage ou premier travail), avec un retour d’une personne du métier." },
-    ],
     revenuLabel: "Revenu mensuel que tu espères quand tu exerceras cette activité, en FCFA",
   },
 
@@ -365,11 +319,6 @@ window.VOIES_PROJET = [
       "Revenus, dépenses et bénéfice net du mois",
       "Régularité du suivi mensuel",
       "Résultats comparés aux objectifs écrits au mois 1",
-    ],
-    jalons: [
-      { id: "abba-j1", label: "Ton rôle et tes objectifs sont écrits avec le responsable du projet." },
-      { id: "abba-j2", label: "Le suivi mensuel des revenus et des dépenses est tenu." },
-      { id: "abba-j3", label: "Des premiers résultats sont constatés et un bilan est fait à 6 mois." },
     ],
     revenuLabel: "Revenu mensuel visé à 6 mois grâce à ce projet, en FCFA",
   },

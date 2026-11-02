@@ -555,9 +555,9 @@ async function getMonRoleAdmin(email) {
 }
 
 // ============================================================
-// PHASE 4 — SERVICE COMMUNAUTAIRE, JALONS DU PROJET, DOSSIER, CERTIFICATION DES BÂTISSEURS
+// PHASE 4 — SERVICE COMMUNAUTAIRE, PLAN DE TRAVAIL DU PROJET, DOSSIER, CERTIFICATION DES BÂTISSEURS
 // /users/{uid}/priv/mea_services — { services: { id: { quoi, ou, date, personnes, appris, v } } } (écrit par l'étudiant, lu par son mentor)
-// /mea_confirmations/{uid}.services[id] et .jalons[jalonId] — écrits par le mentor seulement
+// /mea_confirmations/{uid}.services[id], .plan[actionId] et .planValide — écrits par le mentor seulement
 // /mea_dossiers/{uid} — { mentor: { statut: "valide" | "corrections", ... }, coordo: { statut: "valide", certifId, ... } }
 //     « mentor » écrit par le mentor affecté ; « coordo » écrit par le coordinateur national (ou le PPV)
 // /mea_certifications/{id} — { nom (cohorte), date, lieu } : la date de la Certification des Bâtisseurs, fixée par le coordinateur
@@ -579,8 +579,37 @@ async function deleteService(uid, id) {
 async function saveConfirmationService(uid, id, data) {
   await setDoc(doc(db, "mea_confirmations", uid), { services: { [id]: { ...data, at: new Date().toISOString() } } }, { merge: true });
 }
-async function saveConfirmationJalon(uid, jalonId, data) {
-  await setDoc(doc(db, "mea_confirmations", uid), { jalons: { [jalonId]: { ...data, at: new Date().toISOString() } } }, { merge: true });
+// Plan de travail du projet personnel (onglet « Mon projet »)
+// /users/{uid}/priv/mea_plan — { debut, actions: { id: { nom, date, heure, lieu, src } }, faits: { id: { fait, note, at, v } }, soumis, soumisAt }
+//    « actions » : écrit par le bâtisseur tant que le plan n'est pas validé (verrouillé ensuite par les règles) ; « faits » : toujours modifiable par lui.
+// /mea_confirmations/{uid}.plan[id] = { statut: "confirmee" | "corriger", v, message, par } et .planValide = { statut: "valide" | "modifier", message, par } — écrits par le mentor seulement
+function watchMyPlan(uid, callback) {
+  return onSnapshot(privRef(uid, "mea_plan"), (snap) => callback(snap.exists() ? snap.data() : {}),
+    (err) => { console.error("watch mea_plan:", err); callback({}); });
+}
+async function getPlanOf(uid) {
+  const snap = await getDoc(privRef(uid, "mea_plan"));
+  return snap.exists() ? snap.data() : {};
+}
+async function savePlanAction(uid, id, data, debut) {
+  const corps = { actions: { [id]: data }, updatedAt: serverTimestamp() };
+  if (debut) corps.debut = debut;
+  await setDoc(privRef(uid, "mea_plan"), corps, { merge: true });
+}
+async function deletePlanAction(uid, id) {
+  await setDoc(privRef(uid, "mea_plan"), { actions: { [id]: deleteField() }, faits: { [id]: deleteField() }, updatedAt: serverTimestamp() }, { merge: true });
+}
+async function savePlanFait(uid, id, data) {
+  await setDoc(privRef(uid, "mea_plan"), { faits: { [id]: data }, updatedAt: serverTimestamp() }, { merge: true });
+}
+async function submitPlan(uid) {
+  await setDoc(privRef(uid, "mea_plan"), { soumis: true, soumisAt: new Date().toISOString(), updatedAt: serverTimestamp() }, { merge: true });
+}
+async function saveConfirmationPlanAction(uid, id, data) {
+  await setDoc(doc(db, "mea_confirmations", uid), { plan: { [id]: { ...data, at: new Date().toISOString() } } }, { merge: true });
+}
+async function saveConfirmationPlanValide(uid, data) {
+  await setDoc(doc(db, "mea_confirmations", uid), { planValide: { ...data, at: new Date().toISOString() } }, { merge: true });
 }
 function watchMyDossier(uid, callback) {
   return onSnapshot(doc(db, "mea_dossiers", uid), (snap) => callback(snap.exists() ? snap.data() : {}),
@@ -633,7 +662,7 @@ window.AbbaSync = {
   saveSummary, loadAllSummaries, loadMySummaries,
   watchMyPDPOnce: readPDPOnce,
   loadAllUsers,
-  watchMyServices, getServicesOf, saveService, deleteService, saveConfirmationService, saveConfirmationJalon,
+  watchMyServices, getServicesOf, saveService, deleteService, saveConfirmationService, watchMyPlan, getPlanOf, savePlanAction, deletePlanAction, savePlanFait, submitPlan, saveConfirmationPlanAction, saveConfirmationPlanValide,
   watchMyDossier, getDossier, saveDossierMentor, saveDossierCoordo, loadAllDossiers,
   loadCertifications, getCertification, saveCertification, deleteCertification,
 };

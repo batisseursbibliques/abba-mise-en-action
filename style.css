@@ -635,3 +635,14 @@ input[type="range"]{touch-action:pan-y;}
 .an-val{font-weight:700;color:var(--navy);}
 .an-min{grid-column:2 / 4;color:var(--ink-soft);font-size:12px;margin-top:2px;}
 .an-proch{color:var(--navy);font-weight:600;}
+
+/* Mon projet : plan de travail */
+.plan-item{border:1px solid var(--line,#ddd);border-radius:10px;padding:10px;margin:8px 0;}
+.plan-item.plan-retard{border-color:var(--brick,#b5432f);}
+.plan-btn{font-size:12px;padding:6px 10px;margin:6px 6px 0 0;}
+.plan-sugg{border:1px dashed var(--line,#ccc);border-radius:10px;padding:10px;margin:8px 0;}
+.plan-sugg-ligne{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+.plan-sugg-ligne .text-input{flex:1 1 130px;min-width:0;}
+.plan-barre{position:relative;height:10px;border-radius:6px;background:var(--line,#e5e5e5);overflow:visible;margin:6px 0 8px;}
+.plan-barre span{display:block;height:100%;border-radius:6px;background:var(--brick,#b5432f);}
+.plan-barre i{position:absolute;top:-4px;width:2px;height:18px;background:var(--navy,#1d2b4f);}

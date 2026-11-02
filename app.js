@@ -255,6 +255,7 @@ function setupTabs() {
     document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === name));
     document.querySelectorAll(".bnav-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
     document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === "panel-" + name));
+    if (name === "projet") renderPlan();
     if (name === "suivi") loadSuivi();
     if (name === "admin") loadAdmin();
   }
@@ -293,9 +294,9 @@ function traduireErreur(err) {
 
 async function onAuthChanged(user) {
   // Nettoyer les listeners
-  [unsubAdmins, unsubPDP, unsubRencontres, unsubConfirmations, unsubGrille, unsubEco, unsubMentors, unsubMyRole, unsubServices, unsubDossier].forEach(fn => fn && fn());
-  unsubAdmins = unsubPDP = unsubRencontres = unsubConfirmations = unsubGrille = unsubEco = unsubMentors = unsubMyRole = unsubServices = unsubDossier = null;
-  MY_SERVICES = {}; MY_DOSSIER = {};
+  [unsubAdmins, unsubPDP, unsubRencontres, unsubConfirmations, unsubGrille, unsubEco, unsubMentors, unsubMyRole, unsubServices, unsubDossier, unsubPlan].forEach(fn => fn && fn());
+  unsubAdmins = unsubPDP = unsubRencontres = unsubConfirmations = unsubGrille = unsubEco = unsubMentors = unsubMyRole = unsubServices = unsubDossier = unsubPlan = null;
+  MY_SERVICES = {}; MY_DOSSIER = {}; MY_PLAN = {}; PLAN_FAIT_OUVERT = "";
   MY_ECO = { mois: {} };
   MY_GRILLE = { debut: null, pratiques: null, semaines: {} }; GRILLE_SEMAINE = null; GRILLE_DIRTY = false;
   MY_CONFIRMATIONS = {};
@@ -398,6 +399,7 @@ async function onAuthChanged(user) {
     chargerPdpPreservantBrouillon();
     updatePdpProgress();
     updateAccueilPdpHint();
+    renderPlan();
     renderDossier();
     afficherReprise();
     afficherReperesS3();
@@ -432,6 +434,7 @@ async function onAuthChanged(user) {
     MY_CONFIRMATIONS = data || {};
     renderRencontresPanel();
     renderEcoListe();
+    renderPlan();
     renderDossier();
   });
   // Phase 4 : services communautaires et dossier de certification
@@ -440,6 +443,10 @@ async function onAuthChanged(user) {
   unsubServices = window.AbbaSync.watchMyServices(user.uid, (data) => { MY_SERVICES = data || {}; renderDossier(); });
   if (unsubDossier) unsubDossier();
   unsubDossier = window.AbbaSync.watchMyDossier(user.uid, (data) => { MY_DOSSIER = data || {}; renderDossier(); });
+  // Projet : plan de travail
+  setupPlan();
+  if (unsubPlan) unsubPlan();
+  unsubPlan = window.AbbaSync.watchMyPlan(user.uid, (data) => { MY_PLAN = data || {}; renderPlan(); renderDossier(); });
 }
 
 // Liste complète des mentors : seulement pour les coordinateurs (les règles de sécurité l'exigent aussi)
@@ -644,12 +651,11 @@ function afficherVoie(id) {
       ${liste(v.indicateurs)}
     </div>
     <div class="card">
-      <p class="eyebrow">Étapes validées par ton mentor</p>
-      <p class="settings-hint">Ton mentor validera ces étapes, ou te demandera de les reprendre, au fil des 6 mois.</p>
-      <ul style="margin:4px 0 0 18px;">${v.jalons.map(j => `<li>${j.label} <span data-jalon="${j.id}"></span></li>`).join("")}</ul>
+      <p class="eyebrow">Mon plan de travail</p>
+      <p class="settings-hint">Ici tu choisis ta voie et tu décris ton projet. Les actions que tu feras pendant les 6 mois s’écrivent dans l’onglet « Mon projet » : tu y retrouveras les étapes conseillées ci-dessus comme suggestions à ajouter d’un geste.</p>
+      <button class="btn-primary" type="button" onclick="ouvrirPlanTravail()">📋 Ouvrir mon plan de travail</button>
     </div>`;
   majLibellesVoie(v);
-  majJalonsVoie();
 }
 
 function remplirReponsesVoie(reponses) {
@@ -1347,16 +1353,14 @@ function majAnneauxAccueil() {
   const zone = document.getElementById("accueilAnneaux");
   if (!zone) return;
   let ev;
-  try { ev = evaluerDossier(MY_PDP || {}, MY_RENCONTRES || {}, MY_CONFIRMATIONS || {}, (typeof MY_SERVICES !== "undefined" ? MY_SERVICES : {}) || {}); }
+  try { ev = evaluerDossier(MY_PDP || {}, MY_RENCONTRES || {}, MY_CONFIRMATIONS || {}, (typeof MY_SERVICES !== "undefined" ? MY_SERVICES : {}) || {}, MY_PLAN || {}); }
   catch (e) { return; }
   const r = ev.resume, prog = calculerProgression(MY_PDP || {});
-  const v = voieDe(MY_PDP || {});
-  const jReq = v ? Math.min(2, r.jalonsTotal) : 2;
   const lignes = [
     { goto: "pdp",      couleur: "var(--navy)",  nom: "Plan de développement", pct: prog.pct,                                   valeur: `${prog.pct} %`,                  min: "minimum 80 %" },
     { goto: "rencontres", couleur: "var(--gold)", nom: "Rencontres",            pct: r.rencontres / 6 * 100,                      valeur: `${r.rencontres} / 6`,            min: "minimum 4", extra: prochaineRencontreHtml() },
     { goto: "bilan",    couleur: "var(--sage)",  nom: "Service communautaire", pct: Math.min(r.services, 1) * 100,               valeur: `${r.services}`,                  min: "minimum 1" },
-    { goto: "pdp:s6",   couleur: "var(--brick)", nom: "Projet personnel",      pct: r.jalonsTotal ? r.jalons / r.jalonsTotal * 100 : 0, valeur: r.jalonsTotal ? `${r.jalons} / ${r.jalonsTotal}` : "—", min: `minimum ${jReq}` },
+    { goto: "projet",   couleur: "var(--brick)", nom: "Projet personnel",      pct: r.planPct,                                   valeur: r.planTotal ? `${r.planPct} %` : "—", min: `minimum ${PLAN_SEUIL_PCT} %` },
   ];
   const rayons = [92, 76, 60, 44];
   const cercles = lignes.map((l, i) => {
@@ -1912,7 +1916,7 @@ async function loadSuivi() {
         <button class="btn-secondary" style="font-size:12px;padding:7px 12px;margin-top:8px;width:100%;"
           onclick="showRencontresMentor('${s.uid}')">🗓 Voir et confirmer les rencontres<span id="pend-${s.uid}"></span></button>
         <button class="btn-secondary" style="font-size:12px;padding:7px 12px;margin-top:8px;width:100%;"
-          onclick="showDossierMentor('${s.uid}')">🎓 Dossier : services, projet et validation</button>
+          onclick="showDossierMentor('${s.uid}')">🎓 Dossier : services, projet et validation<span id="plan-${s.uid}"></span></button>
       </div>
     </div>`;
   }).join("")}</div>`;
@@ -2473,8 +2477,19 @@ async function marquerRencontresAConfirmer(data) {
     let c = toutes ? (toutes[s.uid] || {}) : null;
     try {
       if (sien) {
-        const [r, cc] = await Promise.all([window.AbbaSync.getRencontresOf(s.uid), window.AbbaSync.getConfirmations(s.uid)]);
+        const [r, cc, pl] = await Promise.all([window.AbbaSync.getRencontresOf(s.uid), window.AbbaSync.getConfirmations(s.uid), window.AbbaSync.getPlanOf(s.uid).catch(() => ({}))]);
         c = cc;
+        const elPlan = document.getElementById("plan-" + s.uid);
+        if (elPlan) {
+          const lst = planListe(pl), etatP = planEtat(pl, cc);
+          const nRetard = lst.filter(x => planEnRetard(x, pl)).length;
+          const nConf = lst.filter(x => planActionStatut(x.id, pl, cc) === "attente").length;
+          const bouts = [];
+          if (etatP === "soumis") bouts.push("plan à valider");
+          if (nRetard) bouts.push("🔴 " + nRetard + " en retard");
+          if (nConf) bouts.push(nConf + " à confirmer");
+          if (bouts.length) elPlan.textContent = " — " + bouts.join(" · ");
+        }
         const calc = derniereConfirmeeCalc(r, cc);
         if (calc && calc !== (cc.derniereConfirmeeLe || "")) {   // rattrape les confirmations faites avant l'existence de ce champ
           try { await window.AbbaSync.saveDerniereConfirmee(s.uid, calc); } catch (e3) { console.warn(e3); }
@@ -2728,8 +2743,7 @@ function construirePdpHtml(d, nom, progM) {
         ${(() => {
           const v = voieParId(d.s6?.voie || (window.VOIES_ANCIENNES || {})[d.s6?.typeProjet]);
           if (!v) return "";
-          return v.questions.map(q => `<div class="pdp-mentor-row"><dt>${escapeAttr(q.label)}</dt><dd>${escapeAttr(d.s6?.reponses?.[v.id + "-" + q.id]) || "—"}</dd></div>`).join("")
-            + `<div class="pdp-mentor-row"><dt>Étapes à valider</dt><dd>${v.jalons.map(j => escapeAttr(j.label)).join("<br>")}</dd></div>`;
+          return v.questions.map(q => `<div class="pdp-mentor-row"><dt>${escapeAttr(q.label)}</dt><dd>${escapeAttr(d.s6?.reponses?.[v.id + "-" + q.id]) || "—"}</dd></div>`).join("");
         })()}
         <div class="pdp-mentor-row"><dt>Description</dt><dd>${escapeAttr(d.s6?.description) || "—"}</dd></div>
         <div class="pdp-mentor-row"><dt>Objectifs 6 mois</dt><dd>${escapeAttr(d.s6?.objectifs) || "—"}</dd></div>
@@ -3055,7 +3069,7 @@ function fmtDateLongue(iso) {
 function serviceConfirme(conf, id, sv) { const c = conf && conf.services && conf.services[id]; return !!(c && c.statut === "confirme" && c.v === (sv.v || 1)); }
 
 // Calcule les 4 conditions. Fonctionne pour l'étudiant (ses données) comme pour le mentor (données lues).
-function evaluerDossier(pdp, rencontres, conf, services) {
+function evaluerDossier(pdp, rencontres, conf, services, plan) {
   const prog = calculerProgression(pdp || {});
   const moisOk = MOIS_KEYS.filter(k => {
     const r = rencontres && rencontres[k], c = conf && conf[k];
@@ -3064,9 +3078,7 @@ function evaluerDossier(pdp, rencontres, conf, services) {
   const mois6 = moisOk.includes("mois6");
   const nbSrv = Object.entries(services || {}).filter(([id, sv]) => serviceConfirme(conf, id, sv)).length;
   const v = voieDe(pdp);
-  const jTot = v ? v.jalons.length : 0;
-  const jReq = v ? Math.min(2, jTot) : 0;
-  const jOk  = v ? v.jalons.filter(j => conf && conf.jalons && conf.jalons[j.id] && conf.jalons[j.id].statut === "valide").length : 0;
+  const pa = planAvancement(plan || {}, conf || {});
   const criteres = [
     { key: "pdp", ok: prog.atteint,
       texte: `PDP rempli à ${prog.pct} % (au moins 80 %, avec toutes les étapes obligatoires terminées)` },
@@ -3074,10 +3086,12 @@ function evaluerDossier(pdp, rencontres, conf, services) {
       texte: `${moisOk.length} rencontre${moisOk.length > 1 ? "s" : ""} confirmée${moisOk.length > 1 ? "s" : ""} par le mentor sur 6 (au moins 4, dont celle du mois 6)` },
     { key: "service", ok: nbSrv >= 1,
       texte: `${nbSrv} service${nbSrv > 1 ? "s" : ""} communautaire${nbSrv > 1 ? "s" : ""} confirmé${nbSrv > 1 ? "s" : ""} (au moins 1)` },
-    { key: "projet", ok: !!v && jOk >= jReq,
-      texte: v ? `${jOk} étape${jOk > 1 ? "s" : ""} de ton projet validée${jOk > 1 ? "s" : ""} par le mentor sur ${jTot} (au moins ${jReq})` : "Ton projet personnel : choisis ta voie à l’étape S6 du PDP" },
+    { key: "projet", ok: !!v && pa.ok,
+      texte: !v ? "Ton projet personnel : choisis ta voie à l’étape S6 du PDP, puis écris ton plan dans l’onglet « Mon projet »"
+        : !pa.valide ? `Ton plan de travail : ${pa.total} action${pa.total > 1 ? "s" : ""}, à faire valider par ton mentor`
+        : `${pa.confirmees} action${pa.confirmees > 1 ? "s" : ""} de ton plan confirmée${pa.confirmees > 1 ? "s" : ""} par ton mentor sur ${pa.total} (${pa.pct} % — au moins ${PLAN_SEUIL_PCT} %)` },
   ];
-  return { criteres, pret: criteres.every(c => c.ok), resume: { pdpPct: prog.pct, rencontres: moisOk.length, services: nbSrv, jalons: jOk, jalonsTotal: jTot } };
+  return { criteres, pret: criteres.every(c => c.ok), resume: { pdpPct: prog.pct, rencontres: moisOk.length, services: nbSrv, planOk: pa.confirmees, planTotal: pa.total, planPct: pa.pct } };
 }
 
 // encours → pret → (corrections) → mentor → valide
@@ -3098,7 +3112,7 @@ const TEXTES_DOSSIER = {
 function renderDossier() {
   const carteStatut = document.getElementById("dossierStatutCard");
   if (!carteStatut) return;
-  const ev = evaluerDossier(MY_PDP, MY_RENCONTRES, MY_CONFIRMATIONS, MY_SERVICES);
+  const ev = evaluerDossier(MY_PDP, MY_RENCONTRES, MY_CONFIRMATIONS, MY_SERVICES, MY_PLAN);
   const st = statutDossier(ev, MY_DOSSIER);
   const t = TEXTES_DOSSIER[st];
   const msg = st === "corrections" ? `<p class="settings-hint" style="font-weight:600;">${escapeAttr((MY_DOSSIER.mentor && MY_DOSSIER.mentor.message) || "Ton mentor te donnera les détails à la prochaine rencontre.")}</p>` : "";
@@ -3116,7 +3130,6 @@ function renderDossier() {
 
   renderDossierFinal(st);
   renderServices();
-  majJalonsVoie();
   majAnneauxAccueil();
 }
 
@@ -3200,32 +3213,23 @@ function setupServices() {
   });
 }
 
-// Pastilles « validée par ton mentor » sur les étapes du projet (écran S6)
-function majJalonsVoie() {
-  document.querySelectorAll("[data-jalon]").forEach(el => {
-    const c = MY_CONFIRMATIONS.jalons && MY_CONFIRMATIONS.jalons[el.dataset.jalon];
-    el.innerHTML = !c ? "" : c.statut === "valide" ? `<span class="badge-statut ok">✓ validée par ton mentor</span>`
-      : `<span class="badge-statut corr">↺ à reprendre${c.message ? " : " + escapeAttr(c.message) : ""}</span>`;
-  });
-}
-
 // ── Fenêtre du mentor : dossier, services, étapes du projet, validation ──
 window.showDossierMentor = async function(uid) {
   const s = SUIVI_DATA.find(x => x.uid === uid) || (window.__sumCache || []).find(x => x.uid === uid) || {};
   const nom = `${s.prenom || ""} ${s.nom || ""}`.trim() || s.email || uid;
   const estSonMentor = !!CURRENT_USER && String(s.mentorEmail || "").toLowerCase() === String(CURRENT_USER.email || "").toLowerCase();
-  let pdp, r, c, srv, dos;
+  let pdp, r, c, srv, dos, plan;
   try {
-    [pdp, r, c, srv, dos] = await Promise.all([
+    [pdp, r, c, srv, dos, plan] = await Promise.all([
       window.AbbaSync.watchMyPDPOnce(uid), window.AbbaSync.getRencontresOf(uid), window.AbbaSync.getConfirmations(uid),
-      window.AbbaSync.getServicesOf(uid), window.AbbaSync.getDossier(uid),
+      window.AbbaSync.getServicesOf(uid), window.AbbaSync.getDossier(uid), window.AbbaSync.getPlanOf(uid),
     ]);
   } catch (e) { console.error(e); alert("Impossible de lire le dossier."); return; }
   pdp = pdp || {};
-  const ev = evaluerDossier(pdp, r, c, srv);
+  const ev = evaluerDossier(pdp, r, c, srv, plan);
   const st = statutDossier(ev, dos);
   const v = voieDe(pdp);
-  window.__dosCache = { uid, srv, ev };
+  window.__dosCache = { uid, srv, ev, plan };
   const coordoOk = !!(dos.coordo && dos.coordo.statut === "valide");
   const peutAgir = estSonMentor && !coordoOk;
 
@@ -3241,14 +3245,7 @@ window.showDossierMentor = async function(uid) {
         <button class="btn-secondary" style="font-size:12px;padding:6px 10px;" onclick="ouvrirMessageDossier('svc-${id}','envoyerCorrectionService(\\'${uid}\\',\\'${id}\\')')">✎ Demander une correction</button></div><div id="msg-svc-${id}"></div>` : ""}</dd></div>`;
   }).join("") || `<p class="settings-hint">Aucun service enregistré pour le moment.</p>`;
 
-  const jalonsHtml = v ? v.jalons.map(j => {
-    const cj = c.jalons && c.jalons[j.id];
-    const badge = !cj ? `<span class="badge-statut att">⏳ pas encore validée</span>` : cj.statut === "valide" ? `<span class="badge-statut ok">✓ validée</span>` : `<span class="badge-statut corr">↺ à reprendre</span>`;
-    return `<div class="pdp-mentor-row"><dt>${escapeAttr(j.label)}</dt><dd>${badge}${cj && cj.statut === "reprendre" && cj.message ? `<br><strong>${escapeAttr(cj.message)}</strong>` : ""}
-      ${peutAgir ? `<div class="renc-actions" style="margin-top:6px;">
-        <button class="btn-primary" style="font-size:12px;padding:6px 10px;" onclick="validerJalon('${uid}','${j.id}')">✓ Valider</button>
-        <button class="btn-secondary" style="font-size:12px;padding:6px 10px;" onclick="ouvrirMessageDossier('jal-${j.id}','envoyerReprendreJalon(\\'${uid}\\',\\'${j.id}\\')')">↺ À reprendre</button></div><div id="msg-jal-${j.id}"></div>` : ""}</dd></div>`;
-  }).join("") : `<p class="settings-hint">Cet étudiant n’a pas encore choisi sa voie de projet (étape S6).</p>`;
+  const planHtml = v ? planMentorHtml(uid, plan, c, peutAgir) : `<p class="settings-hint">Cet étudiant n’a pas encore choisi sa voie de projet (étape S6).</p>`;
 
   const decisions = !peutAgir ? `<p class="settings-hint">${coordoOk ? "Le dossier est déjà validé par le coordinateur national." : "Seul le mentor affecté peut valider ce dossier."}</p>` : `
     <div class="renc-actions">
@@ -3267,7 +3264,7 @@ window.showDossierMentor = async function(uid) {
       <div class="pdp-mentor-section"><h3>Les quatre conditions</h3>
         ${ev.criteres.map(x => `<p style="margin:6px 0;">${x.ok ? "✅" : "⬜"} ${escapeAttr(x.texte)}</p>`).join("")}</div>
       <div class="pdp-mentor-section"><h3>Services communautaires</h3>${servicesHtml}</div>
-      <div class="pdp-mentor-section"><h3>Étapes du projet${v ? " — " + escapeAttr(v.titre) : ""}</h3>${jalonsHtml}</div>
+      <div class="pdp-mentor-section"><h3>Plan de travail du projet${v ? " — " + escapeAttr(v.titre) : ""}</h3>${planHtml}</div>
       <div class="pdp-mentor-section"><h3>Décision</h3>${decisions}</div>
       <button class="btn-secondary" style="width:100%;margin-top:8px;" onclick="document.getElementById('dossierMentorOverlay').remove()">Fermer</button>
     </div>
@@ -3293,9 +3290,6 @@ async function agirDossier(uid, fn, echec) {
 window.confirmerService = (uid, id) => agirDossier(uid, () => window.AbbaSync.saveConfirmationService(uid, id, { statut: "confirme", v: (window.__dosCache.srv[id].v || 1), par: CURRENT_USER.email }));
 window.envoyerCorrectionService = (uid, id) => { const m = messageDossier("svc-" + id); if (!m) return;
   return agirDossier(uid, () => window.AbbaSync.saveConfirmationService(uid, id, { statut: "correction", v: (window.__dosCache.srv[id].v || 1), message: m, par: CURRENT_USER.email })); };
-window.validerJalon = (uid, jid) => agirDossier(uid, () => window.AbbaSync.saveConfirmationJalon(uid, jid, { statut: "valide", message: "", par: CURRENT_USER.email }));
-window.envoyerReprendreJalon = (uid, jid) => { const m = messageDossier("jal-" + jid); if (!m) return;
-  return agirDossier(uid, () => window.AbbaSync.saveConfirmationJalon(uid, jid, { statut: "reprendre", message: m, par: CURRENT_USER.email })); };
 window.validerDossierMentor = (uid) => {
   const ev = window.__dosCache && window.__dosCache.ev;
   if (!ev || !ev.pret) { alert("Les quatre conditions ne sont pas encore remplies."); return; }
@@ -3346,7 +3340,7 @@ async function chargerCertifications() {
   const attente = Object.entries(dossiers).filter(([, d]) => d.mentor && d.mentor.statut === "valide" && !(d.coordo && d.coordo.statut === "valide"));
   document.getElementById("dossiersAValider").innerHTML = attente.length ? attente.map(([uid, d]) => {
     const r = d.mentor.resume || {};
-    return `<div class="pdp-mentor-row"><dt>${escapeAttr(nomDe(uid))}</dt><dd>PDP ${escapeAttr(r.pdpPct != null ? r.pdpPct : "—")} % · ${escapeAttr(r.rencontres != null ? r.rencontres : "—")} rencontres · ${escapeAttr(r.services != null ? r.services : "—")} service(s) · ${escapeAttr(r.jalons != null ? r.jalons : "—")} étape(s) du projet<br>Validé par ${escapeAttr(d.mentor.par || "le mentor")}
+    return `<div class="pdp-mentor-row"><dt>${escapeAttr(nomDe(uid))}</dt><dd>PDP ${escapeAttr(r.pdpPct != null ? r.pdpPct : "—")} % · ${escapeAttr(r.rencontres != null ? r.rencontres : "—")} rencontres · ${escapeAttr(r.services != null ? r.services : "—")} service(s) · ${escapeAttr(r.planOk != null ? r.planOk + " / " + r.planTotal : "—")} action(s) du plan confirmée(s)<br>Validé par ${escapeAttr(d.mentor.par || "le mentor")}
       <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px;">
         <button class="btn-secondary" type="button" style="font-size:12px;padding:6px 10px;" onclick="showDossierMentor('${uid}')">Voir le dossier</button>
         <select class="text-input" id="cert-${uid}">${optionsCert("")}</select>
@@ -3463,7 +3457,7 @@ function nomFichierPdf(nom) { return "PDP-" + String(nom || "etudiant").normaliz
 
 // Section « Mon dossier » ajoutée à la fin du PDF de l'étudiant
 function sectionsDossier() {
-  const ev = evaluerDossier(MY_PDP, MY_RENCONTRES, MY_CONFIRMATIONS, MY_SERVICES);
+  const ev = evaluerDossier(MY_PDP, MY_RENCONTRES, MY_CONFIRMATIONS, MY_SERVICES, MY_PLAN);
   const st = statutDossier(ev, MY_DOSSIER);
   const out = [{ titre: "Mon dossier de certification", lignes: [["Statut", trPdf(TEXTES_DOSSIER[st].titre)]].concat(ev.criteres.map((c, i) => [trPdf("Condition") + " " + (i + 1), (c.ok ? "[x] " : "[ ] ") + trPdf(c.texte)])) }];
   const srv = Object.entries(MY_SERVICES);
@@ -3495,3 +3489,313 @@ window.exporterPdpPdf = async function(uid) {
     else alert("Impossible de fabriquer le PDF pour le moment. Réessaie.");
   }
 };
+
+// ─────────────────────────────────────────────────────────────
+// MON PROJET — plan de travail écrit par la personne, confirmé action par action par le mentor
+// Règles : le mentor valide le plan (puis il est verrouillé) ; au moins 8 actions dont une dans les mois 4 à 6 ;
+// une action ne compte que confirmée par le mentor ; condition de certification : au moins 40 % des actions du plan.
+// ─────────────────────────────────────────────────────────────
+const PLAN_MIN_ACTIONS = 8;
+const PLAN_SEUIL_PCT = 40;
+let MY_PLAN = {};
+let unsubPlan = null;
+let PLAN_PRET = false;
+let PLAN_EN_EDITION = "";
+let PLAN_FAIT_OUVERT = "";
+const PLAN_NOTES_BROUILLON = {};
+
+function planDebut(plan) { return (plan && plan.debut) || isoJour(new Date()); }
+function planMoisPlus(iso, n) { const d = new Date(iso + "T12:00:00"); d.setMonth(d.getMonth() + n); return isoJour(d); }
+function planJoursPlus(iso, n) { const d = new Date(iso + "T12:00:00"); d.setDate(d.getDate() + n); return isoJour(d); }
+function planDateCourte(iso) {
+  const d = new Date(String(iso).slice(0, 10) + "T12:00:00");
+  return isNaN(d) ? String(iso || "") : d.toLocaleDateString(LOC(), { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+}
+function planListe(plan) {
+  return Object.entries((plan && plan.actions) || {}).map(([id, a]) => ({ id, ...a }))
+    .sort((a, b) => (String(a.date) + String(a.heure || "")).localeCompare(String(b.date) + String(b.heure || "")));
+}
+// Minimum d'actions, dont au moins une dans les mois 4 à 6
+function planConforme(plan) {
+  const liste = planListe(plan);
+  const seuil46 = planMoisPlus(planDebut(plan), 3);
+  const n = liste.length, a46 = liste.some(a => String(a.date) >= seuil46);
+  return { n, a46, seuil46, ok: n >= PLAN_MIN_ACTIONS && a46 };
+}
+// brouillon → soumis → (modifier) → valide (verrouillé)
+function planEtat(plan, conf) {
+  const pv = conf && conf.planValide;
+  if (pv && pv.statut === "valide") return "valide";
+  const soumisAt = plan && plan.soumis ? String(plan.soumisAt || "") : "";
+  if (pv && pv.statut === "modifier" && !(soumisAt && soumisAt > String(pv.at || ""))) return "modifier";
+  return soumisAt ? "soumis" : "brouillon";
+}
+// afaire → attente (faite, pas encore vue par le mentor) → confirmee | corriger
+function planActionStatut(id, plan, conf) {
+  const f = plan && plan.faits && plan.faits[id];
+  if (!f || !f.fait) return "afaire";
+  const c = conf && conf.plan && conf.plan[id];
+  if (c && c.v === f.v) return c.statut === "confirmee" ? "confirmee" : "corriger";
+  return "attente";
+}
+function planEnRetard(a, plan) {
+  const f = plan && plan.faits && plan.faits[a.id];
+  if (f && f.fait) return false;
+  const t = new Date(a.date + "T" + (a.heure || "23:59") + ":00");
+  return !isNaN(t) && t < new Date();
+}
+function planAvancement(plan, conf) {
+  const liste = planListe(plan);
+  const total = liste.length;
+  const confirmees = liste.filter(a => planActionStatut(a.id, plan, conf) === "confirmee").length;
+  const valide = planEtat(plan, conf) === "valide";
+  return { total, confirmees, valide, pct: total ? Math.round(confirmees / total * 100) : 0,
+           ok: valide && total > 0 && confirmees * 100 >= PLAN_SEUIL_PCT * total };
+}
+function planBadgeAction(st, retard, message) {
+  if (st === "confirmee") return `<span class="badge-statut ok">✓ confirmée par ton mentor</span>`;
+  if (st === "corriger") return `<span class="badge-statut corr">↺ à corriger</span>`;
+  if (st === "attente") return `<span class="badge-statut att">⏳ en attente de ton mentor</span>`;
+  return retard ? `<span class="badge-statut corr">⏰ en retard</span>` : `<span class="badge-statut att">à faire</span>`;
+}
+
+function renderPlan() {
+  const cVoie = document.getElementById("planVoieCard");
+  if (!cVoie) return;
+  const v = voieDe(MY_PDP || {});
+  const etat = planEtat(MY_PLAN, MY_CONFIRMATIONS);
+  const modifiable = etat !== "valide";
+  const cf = planConforme(MY_PLAN);
+  const pa = planAvancement(MY_PLAN, MY_CONFIRMATIONS);
+  const pv = (MY_CONFIRMATIONS && MY_CONFIRMATIONS.planValide) || {};
+  const cStatut = document.getElementById("planStatutCard"), cSugg = document.getElementById("planSuggCard"),
+        cForm = document.getElementById("planFormCard"), cListe = document.getElementById("planListeCard");
+
+  cVoie.innerHTML = v
+    ? `<p class="eyebrow">Mon projet</p><p style="margin:4px 0;"><strong>${escapeAttr(v.titre)}</strong></p>
+       <p class="settings-hint">${escapeAttr(v.pour)}</p>
+       <button class="btn-secondary" type="button" data-plan-s6="1">Revoir ma voie et mes réponses (S6)</button>`
+    : `<p class="eyebrow">Mon projet</p>
+       <p class="settings-hint">Choisis d’abord ta voie à l’étape S6 du PDP. Ton plan de travail s’écrit ensuite ici.</p>
+       <button class="btn-primary" type="button" data-plan-s6="1">Choisir ma voie (S6)</button>`;
+  [cStatut, cSugg, cForm, cListe].forEach(c => { if (c) c.style.display = v ? "" : "none"; });
+  if (!v) return;
+
+  // ── Où en est le plan ──
+  const coches = `<ul style="list-style:none;padding:0;margin:6px 0 0;">
+      <li style="margin:6px 0;">${cf.n >= PLAN_MIN_ACTIONS ? "✅" : "⬜"} ${cf.n} action${cf.n > 1 ? "s" : ""} (minimum ${PLAN_MIN_ACTIONS})</li>
+      <li style="margin:6px 0;">${cf.a46 ? "✅" : "⬜"} Au moins une action dans les mois 4 à 6 (à partir du ${escapeAttr(planDateCourte(cf.seuil46))})</li></ul>`;
+  const envoyer = (etat === "brouillon" || etat === "modifier")
+    ? `<button class="btn-primary" type="button" data-plan-envoyer="1" ${cf.ok ? "" : "disabled"} style="margin-top:10px;">📨 Envoyer mon plan à mon mentor</button>` : "";
+  if (etat === "valide") {
+    cStatut.innerHTML = `<p class="eyebrow">Mon plan de travail</p>
+      <p><span class="badge-statut ok">🔒 Plan validé par ton mentor</span></p>
+      <p style="margin:10px 0 4px;font-size:22px;font-weight:700;">${pa.pct} %</p>
+      <div class="plan-barre"><span style="width:${Math.min(100, pa.pct)}%"></span><i style="left:${PLAN_SEUIL_PCT}%"></i></div>
+      <p class="settings-hint">${pa.confirmees} action${pa.confirmees > 1 ? "s" : ""} confirmée${pa.confirmees > 1 ? "s" : ""} par ton mentor sur ${pa.total}. Minimum pour la certification : ${PLAN_SEUIL_PCT} %.</p>
+      <p class="settings-hint">Ton plan est verrouillé. Seul ton mentor peut le rouvrir pour une modification.</p>`;
+  } else {
+    const msgEtat = etat === "soumis" ? `<p><span class="badge-statut att">⏳ En attente de la validation de ton mentor</span></p>
+        <p class="settings-hint">Tu peux encore ajuster ton plan tant qu’il n’est pas validé.</p>`
+      : etat === "modifier" ? `<p><span class="badge-statut corr">✎ Ton mentor demande des modifications</span></p>
+        ${pv.message ? `<p class="settings-hint" style="font-weight:600;">${escapeAttr(pv.message)}</p>` : ""}`
+      : `<p class="settings-hint">Écris ton plan de travail : les actions que tu feras pendant les 6 mois, chacune avec une date limite et une heure. Ton mentor le validera, puis il sera verrouillé.</p>`;
+    cStatut.innerHTML = `<p class="eyebrow">Mon plan de travail</p>${msgEtat}${coches}${envoyer}
+      <p class="settings-hint" style="margin-top:8px;">« Je l’ai fait » devient disponible quand ton mentor a validé ton plan.</p>`;
+  }
+
+  // ── Suggestions (les actions conseillées de la voie) ──
+  if (modifiable) {
+    const gardees = {};
+    cSugg.querySelectorAll("input[id^='sg-']").forEach(i => { gardees[i.id] = i.value; });
+    const deja = new Set(planListe(MY_PLAN).map(a => String(a.nom || "").trim().toLowerCase()));
+    const auj = isoJour(new Date()), debut = planDebut(MY_PLAN), fin = planMoisPlus(debut, 6);
+    const decal = [14, 60, 135];
+    const blocs = v.etapes.map((e, i) => {
+      const defaut = (() => { let d = planJoursPlus(debut, decal[i] || 14); if (d < auj) d = auj; return d > fin ? fin : d; })();
+      const lignes = e.actions.map((t, j) => ({ t, j })).filter(x => !deja.has(x.t.trim().toLowerCase())).map(({ t, j }) => `
+        <div class="plan-sugg">
+          <p style="margin:0 0 6px;">${escapeAttr(t)}</p>
+          <div class="plan-sugg-ligne">
+            <input class="text-input" type="date" id="sg-d-${i}-${j}" value="${gardees["sg-d-" + i + "-" + j] || defaut}" min="${auj}" max="${fin}">
+            <input class="text-input" type="time" id="sg-h-${i}-${j}" value="${gardees["sg-h-" + i + "-" + j] || "18:00"}">
+            <button class="btn-secondary" type="button" data-plan-sugg="${i}:${j}">+ Ajouter</button>
+          </div>
+        </div>`).join("");
+      return lignes ? `<p style="margin:12px 0 4px;"><strong>${escapeAttr(e.periode)} — ${escapeAttr(e.titre)}</strong></p>${lignes}` : "";
+    }).join("");
+    cSugg.style.display = "";
+    cSugg.innerHTML = `<p class="eyebrow">Actions conseillées pour ta voie</p>
+      <p class="settings-hint">Touche « + Ajouter » pour les mettre dans ton plan. Choisis la date et l’heure de chacune.</p>
+      ${blocs || `<p class="settings-hint">✓ Tu as ajouté toutes les actions conseillées.</p>`}
+      <p class="auth-error" id="planSuggErr"></p>`;
+  } else { cSugg.style.display = "none"; }
+  cForm.style.display = modifiable ? "" : "none";
+
+  // ── La liste des actions ──
+  const liste = planListe(MY_PLAN);
+  if (!liste.length) { cListe.innerHTML = `<p class="eyebrow">Mes actions</p><p class="settings-hint">Aucune action pour le moment. Ajoute des actions conseillées ci-dessus, ou écris les tiennes.</p>`; return; }
+  cListe.innerHTML = `<p class="eyebrow">Mes actions (${liste.length})</p>` + liste.map(a => {
+    const st = planActionStatut(a.id, MY_PLAN, MY_CONFIRMATIONS);
+    const retard = planEnRetard(a, MY_PLAN);
+    const f = (MY_PLAN.faits || {})[a.id] || {};
+    const c = (MY_CONFIRMATIONS.plan || {})[a.id] || {};
+    const msg = st === "corriger" && c.message ? `<p class="settings-hint" style="font-weight:600;">${escapeAttr(c.message)}</p>` : "";
+    let actions = "";
+    if (modifiable && !f.fait) actions += `<button class="btn-secondary plan-btn" type="button" data-plan-act="edit" data-id="${a.id}">Modifier</button>
+        <button class="btn-secondary plan-btn" type="button" data-plan-act="del" data-id="${a.id}">Supprimer</button>`;
+    if (etat === "valide" && st !== "confirmee") {
+      if (PLAN_FAIT_OUVERT === a.id) {
+        const val = PLAN_NOTES_BROUILLON[a.id] !== undefined ? PLAN_NOTES_BROUILLON[a.id] : (f.note || "");
+        actions += `<div style="margin-top:8px;"><textarea class="text-input" rows="2" maxlength="300" data-plan-note="${a.id}" placeholder="Une courte note : ce que tu as fait (facultatif)">${escapeAttr(val)}</textarea>
+          <button class="btn-primary plan-btn" type="button" data-plan-act="fait" data-id="${a.id}">✓ ${f.fait ? "Enregistrer la note" : "Je l’ai fait"}</button>
+          <button class="btn-secondary plan-btn" type="button" data-plan-act="annuler" data-id="${a.id}">Annuler</button></div>`;
+      } else actions += `<button class="btn-primary plan-btn" type="button" data-plan-act="ouvrir" data-id="${a.id}">${f.fait ? "Modifier ma note" : "✓ Je l’ai fait"}</button>`;
+    }
+    return `<div class="plan-item${retard ? " plan-retard" : ""}">
+      <p style="margin:0 0 4px;"><strong>${escapeAttr(planDateCourte(a.date))} · ${escapeAttr(a.heure || "")}</strong> ${planBadgeAction(st, retard)}</p>
+      <p style="margin:4px 0;">${escapeAttr(a.nom || "")}</p>
+      ${a.lieu ? `<p class="settings-hint" style="margin:2px 0;">📍 ${escapeAttr(a.lieu)}</p>` : ""}
+      ${f.fait && f.note ? `<p class="settings-hint" style="margin:2px 0;">📝 ${escapeAttr(f.note)}</p>` : ""}${msg}
+      ${actions}</div>`;
+  }).join("");
+}
+
+function planViderForm() {
+  PLAN_EN_EDITION = "";
+  ["planNom", "planDate", "planLieu"].forEach(i => { const el = document.getElementById(i); if (el) el.value = ""; });
+  const h = document.getElementById("planHeure"); if (h) h.value = "18:00";
+  const b = document.getElementById("planCancelBtn"); if (b) b.style.display = "none";
+  const s = document.getElementById("planSaveBtn"); if (s) s.textContent = "Ajouter cette action";
+  const e = document.getElementById("planErr"); if (e) e.textContent = "";
+}
+
+async function planEnregistrerAction({ id, nom, date, heure, lieu, src }, errEl) {
+  errEl.textContent = "";
+  nom = String(nom || "").trim(); lieu = String(lieu || "").trim();
+  if (planEtat(MY_PLAN, MY_CONFIRMATIONS) === "valide") { errEl.textContent = "Le plan est verrouillé. Demande à ton mentor de le rouvrir."; return false; }
+  if (nom.length < 3) { errEl.textContent = "Donne un nom à l’action."; return false; }
+  if (nom.length > 120) { errEl.textContent = "Le nom de l’action est trop long (120 caractères au plus)."; return false; }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "")) { errEl.textContent = "Choisis la date limite."; return false; }
+  if (!/^\d{2}:\d{2}$/.test(heure || "")) { errEl.textContent = "Choisis l’heure."; return false; }
+  const auj = isoJour(new Date()), fin = planMoisPlus(planDebut(MY_PLAN), 6);
+  if (date > fin) { errEl.textContent = `La date doit être dans tes 6 mois de projet (avant le ${planDateCourte(fin)}).`; return false; }
+  if (!MY_PLAN.actions || !MY_PLAN.actions[id]) { if (date < auj) { errEl.textContent = "Choisis une date à partir d’aujourd’hui."; return false; } }
+  try {
+    await window.AbbaSync.savePlanAction(CURRENT_USER.uid, id, { nom, date, heure, lieu: lieu.slice(0, 120), src: src || "perso" }, MY_PLAN.debut ? null : auj);
+    return true;
+  } catch (e) { console.error(e); errEl.textContent = "Échec de l’enregistrement. Réessaie."; return false; }
+}
+
+function setupPlan() {
+  if (PLAN_PRET) return;
+  PLAN_PRET = true;
+  const panel = document.getElementById("panel-projet");
+  if (!panel) return;
+  panel.addEventListener("click", async (ev) => {
+    const b = ev.target.closest("[data-plan-s6],[data-plan-envoyer],[data-plan-sugg],[data-plan-act]");
+    if (!b) return;
+    if (b.dataset.planS6) {
+      document.querySelector('.tab[data-tab="pdp"]')?.click();
+      document.querySelector('.pdp-tab[data-section="s6"]')?.click();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    if (b.dataset.planEnvoyer) {
+      const cf = planConforme(MY_PLAN);
+      if (!cf.ok) return;
+      if (!confirm("Envoyer ton plan à ton mentor ? Tu pourras encore l’ajuster tant qu’il ne l’a pas validé.")) return;
+      b.disabled = true;
+      try { await window.AbbaSync.submitPlan(CURRENT_USER.uid); }
+      catch (e) { console.error(e); alert("Échec de l’envoi. Réessaie."); b.disabled = false; }
+      return;
+    }
+    if (b.dataset.planSugg) {
+      const [i, j] = b.dataset.planSugg.split(":").map(Number);
+      const v = voieDe(MY_PDP || {}); const texte = v && v.etapes[i] && v.etapes[i].actions[j];
+      if (!texte) return;
+      const date = document.getElementById(`sg-d-${i}-${j}`)?.value, heure = document.getElementById(`sg-h-${i}-${j}`)?.value;
+      b.disabled = true;
+      const ok = await planEnregistrerAction({ id: "act" + Date.now().toString(36), nom: texte, date, heure, lieu: "", src: "suggestion" }, document.getElementById("planSuggErr"));
+      if (!ok) b.disabled = false;
+      return;
+    }
+    const id = b.dataset.id, act = b.dataset.planAct;
+    if (act === "edit") {
+      const a = (MY_PLAN.actions || {})[id]; if (!a) return;
+      PLAN_EN_EDITION = id;
+      setVal("planNom", a.nom); setVal("planDate", a.date); setVal("planHeure", a.heure); setVal("planLieu", a.lieu || "");
+      document.getElementById("planCancelBtn").style.display = "";
+      document.getElementById("planSaveBtn").textContent = "Enregistrer les modifications";
+      document.getElementById("planFormCard").scrollIntoView({ behavior: "smooth", block: "center" });
+    } else if (act === "del") {
+      if (!confirm("Supprimer cette action du plan ?")) return;
+      try { await window.AbbaSync.deletePlanAction(CURRENT_USER.uid, id); if (PLAN_EN_EDITION === id) planViderForm(); }
+      catch (e) { console.error(e); alert("Échec de la suppression. Réessaie."); }
+    } else if (act === "ouvrir") { PLAN_FAIT_OUVERT = id; renderPlan(); }
+    else if (act === "annuler") { PLAN_FAIT_OUVERT = ""; delete PLAN_NOTES_BROUILLON[id]; renderPlan(); }
+    else if (act === "fait") {
+      const ancien = (MY_PLAN.faits || {})[id];
+      const note = String(PLAN_NOTES_BROUILLON[id] !== undefined ? PLAN_NOTES_BROUILLON[id] : (ancien && ancien.note) || "").trim().slice(0, 300);
+      b.disabled = true;
+      try {
+        await window.AbbaSync.savePlanFait(CURRENT_USER.uid, id, { fait: true, note, at: new Date().toISOString(), v: ((ancien && ancien.v) || 0) + 1 });
+        PLAN_FAIT_OUVERT = ""; delete PLAN_NOTES_BROUILLON[id];
+      } catch (e) { console.error(e); alert("Échec de l’enregistrement. Réessaie."); b.disabled = false; }
+    }
+  });
+  panel.addEventListener("input", (ev) => { if (ev.target.dataset && ev.target.dataset.planNote) PLAN_NOTES_BROUILLON[ev.target.dataset.planNote] = ev.target.value; });
+  document.getElementById("planCancelBtn").addEventListener("click", planViderForm);
+  document.getElementById("planSaveBtn").addEventListener("click", async () => {
+    const ancien = PLAN_EN_EDITION ? (MY_PLAN.actions || {})[PLAN_EN_EDITION] : null;
+    const ok = await planEnregistrerAction({ id: PLAN_EN_EDITION || ("act" + Date.now().toString(36)), nom: getVal("planNom"), date: getVal("planDate"), heure: getVal("planHeure"), lieu: getVal("planLieu"), src: ancien ? ancien.src : "perso" }, document.getElementById("planErr"));
+    if (ok) planViderForm();
+  });
+}
+window.ouvrirPlanTravail = function() {
+  document.querySelector('.tab[data-tab="projet"]')?.click();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+};
+
+// ── Espace du mentor : valider le plan, confirmer chaque action ──
+function planMentorHtml(uid, plan, conf, peutAgir) {
+  const etat = planEtat(plan, conf), liste = planListe(plan), cf = planConforme(plan), pa = planAvancement(plan, conf);
+  const pv = (conf && conf.planValide) || {};
+  const badgeEtat = { brouillon: `<span class="badge-statut att">✎ en préparation</span>`, soumis: `<span class="badge-statut att">⏳ à valider</span>`,
+    modifier: `<span class="badge-statut corr">✎ modifications demandées</span>`, valide: `<span class="badge-statut ok">🔒 validé</span>` }[etat];
+  const retards = liste.filter(a => planEnRetard(a, plan));
+  const entete = `<p style="margin:0 0 6px;">${badgeEtat} ${cf.n} action${cf.n > 1 ? "s" : ""} (minimum ${PLAN_MIN_ACTIONS}) · ${cf.a46 ? "✅ une action dans les mois 4 à 6" : "⬜ aucune action dans les mois 4 à 6"}</p>
+    ${etat === "valide" ? `<p style="margin:0 0 6px;"><strong>${pa.pct} %</strong> — ${pa.confirmees} confirmée${pa.confirmees > 1 ? "s" : ""} sur ${pa.total} (minimum ${PLAN_SEUIL_PCT} %)</p>` : ""}
+    ${retards.length ? `<p style="margin:0 0 6px;color:var(--brick);font-weight:600;">🔴 ${retards.length} action${retards.length > 1 ? "s" : ""} en retard</p>` : ""}
+    ${etat === "modifier" && pv.message ? `<p class="settings-hint">Ta demande : ${escapeAttr(pv.message)}</p>` : ""}`;
+  const lignes = liste.length ? liste.map(a => {
+    const st = planActionStatut(a.id, plan, conf), retard = planEnRetard(a, plan), f = (plan.faits || {})[a.id] || {}, c = (conf.plan || {})[a.id] || {};
+    return `<div class="pdp-mentor-row"><dt>${escapeAttr(planDateCourte(a.date))} · ${escapeAttr(a.heure || "")} ${planBadgeAction(st, retard).replace("confirmée par ton mentor", "confirmée").replace("en attente de ton mentor", "à confirmer")}</dt>
+      <dd>${escapeAttr(a.nom || "")}${a.lieu ? `<br><em>📍 ${escapeAttr(a.lieu)}</em>` : ""}${f.fait && f.note ? `<br>📝 ${escapeAttr(f.note)}` : ""}
+      ${st === "corriger" && c.message ? `<br><strong>Ta demande : ${escapeAttr(c.message)}</strong>` : ""}
+      ${(peutAgir && etat === "valide" && f.fait && st !== "confirmee") ? `<div class="renc-actions" style="margin-top:6px;">
+        <button class="btn-primary" style="font-size:12px;padding:6px 10px;" onclick="confirmerActionPlan('${uid}','${a.id}')">✓ Confirmer</button>
+        <button class="btn-secondary" style="font-size:12px;padding:6px 10px;" onclick="ouvrirMessageDossier('act-${a.id}','envoyerCorrigerActionPlan(\\'${uid}\\',\\'${a.id}\\')')">↺ À corriger</button></div><div id="msg-act-${a.id}"></div>` : ""}</dd></div>`;
+  }).join("") : `<p class="settings-hint">Cet étudiant n’a pas encore ajouté d’action à son plan.</p>`;
+  let decisions = "";
+  if (peutAgir) {
+    if (etat === "valide") decisions = `<div class="renc-actions"><button class="btn-secondary" style="font-size:12px;padding:6px 10px;" onclick="ouvrirMessageDossier('plan','rouvrirPlanMentor(\\'${uid}\\')')">🔓 Rouvrir le plan pour une modification</button></div><div id="msg-plan"></div>`;
+    else decisions = `<div class="renc-actions">
+        <button class="btn-primary" style="font-size:13px;padding:8px 12px;" ${cf.ok ? "" : "disabled"} onclick="validerPlanMentor('${uid}')">✓ Valider et verrouiller le plan</button>
+        <button class="btn-secondary" style="font-size:13px;padding:8px 12px;" onclick="ouvrirMessageDossier('plan','demanderModifPlan(\\'${uid}\\')')">✎ Demander des modifications</button></div><div id="msg-plan"></div>
+        ${cf.ok ? "" : `<p class="settings-hint">Tu pourras valider quand le plan aura au moins ${PLAN_MIN_ACTIONS} actions, dont une dans les mois 4 à 6.</p>`}`;
+  }
+  return entete + lignes + decisions;
+}
+window.confirmerActionPlan = (uid, id) => agirDossier(uid, () => window.AbbaSync.saveConfirmationPlanAction(uid, id, { statut: "confirmee", v: ((window.__dosCache.plan.faits || {})[id] || {}).v || 1, message: "", par: CURRENT_USER.email }));
+window.envoyerCorrigerActionPlan = (uid, id) => { const m = messageDossier("act-" + id); if (!m) return;
+  return agirDossier(uid, () => window.AbbaSync.saveConfirmationPlanAction(uid, id, { statut: "corriger", v: ((window.__dosCache.plan.faits || {})[id] || {}).v || 1, message: m, par: CURRENT_USER.email })); };
+window.validerPlanMentor = (uid) => {
+  if (!planConforme(window.__dosCache.plan).ok) { alert("Le plan n’est pas encore conforme (actions en nombre suffisant, dont une dans les mois 4 à 6)."); return; }
+  if (!confirm("Valider ce plan ? Il sera verrouillé : l’étudiant ne pourra plus ajouter ni supprimer d’actions, sauf si tu le rouvres.")) return;
+  return agirDossier(uid, () => window.AbbaSync.saveConfirmationPlanValide(uid, { statut: "valide", message: "", par: CURRENT_USER.email }));
+};
+window.demanderModifPlan = (uid) => { const m = messageDossier("plan"); if (!m) return;
+  return agirDossier(uid, () => window.AbbaSync.saveConfirmationPlanValide(uid, { statut: "modifier", message: m, par: CURRENT_USER.email })); };
+window.rouvrirPlanMentor = (uid) => { const m = messageDossier("plan"); if (!m) return;
+  return agirDossier(uid, () => window.AbbaSync.saveConfirmationPlanValide(uid, { statut: "modifier", message: m, par: CURRENT_USER.email })); };
