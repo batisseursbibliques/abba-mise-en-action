@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" data-espace="action">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -9,6 +9,8 @@
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="/abba-batisseur/habillage.css">
+<script src="/abba-batisseur/habillage.js"></script>
 <script src="i18n.js"></script>
 <script>
 if ('serviceWorker' in navigator) {
@@ -77,8 +79,9 @@ if ('serviceWorker' in navigator) {
 
     <!-- ================= ACCUEIL ================= -->
     <section class="panel active" id="panel-accueil">
-      <div class="panel-head">
-        <h1 id="accueilSalut">Bienvenue 👋</h1>
+      <div class="hab-salut">
+        <p class="hab-salut-nom" id="accueilSalut">Bienvenue 👋</p>
+        <p class="hab-salut-phrase">Vivre ce que tu as appris, avec ton mentor, pas à pas.</p>
       </div>
 
       <div class="card" id="accueilAnneauxCard">
