@@ -378,19 +378,21 @@ async function loadMySummaries(mentorEmail) {
 // + /mea_summaries pour savoir qui a un PDP.
 // ============================================================
 async function loadAllUsers() {
-  // Charge depuis /summaries (ABBA Life) + /users directement
-  // pour couvrir tous les comptes même sans activité ABBA Life
+  // Seuls apparaissent les Bâtisseurs qui ont DEMANDÉ l'accès à la Formation (et dont la demande est acceptée).
+  // Un compte créé sur l'accueil ou utilisé seulement dans ABBA Life n'est jamais listé ici.
   const [summSnap, usersSnap] = await Promise.all([
     getDocs(collection(db, "summaries")),
     getDocs(collection(db, "users")),
   ]);
+  // Résumés de Formation : écrits uniquement par la Formation elle-même (ABBA Life n'en écrit plus)
+  const admis = new Set(summSnap.docs.map(d => d.id));
+  try {
+    const enr = await getDocs(collection(db, "enrollments"));
+    enr.docs.map(d => d.data()).filter(e => e.app === "parcours" && e.status === "active").forEach(e => admis.add(e.uid));
+  } catch (e) { /* pas le droit de lire les demandes : on garde les résumés de Formation seuls */ }
   const map = {};
-  // D'abord les profils /users (source de vérité pour nom/prénom/email)
-  usersSnap.docs.forEach(d => { map[d.id] = { uid: d.id, ...d.data() }; });
-  // Compléter avec summaries si le profil /users est incomplet
-  summSnap.docs.forEach(d => {
-    if (!map[d.id]) map[d.id] = { uid: d.id, ...d.data() };
-  });
+  usersSnap.docs.forEach(d => { if (admis.has(d.id)) map[d.id] = { uid: d.id, ...d.data() }; });
+  summSnap.docs.forEach(d => { if (admis.has(d.id) && !map[d.id]) map[d.id] = { uid: d.id, ...d.data() }; });
   return Object.values(map).filter(u => u.email || u.nom || u.prenom);
 }
 
