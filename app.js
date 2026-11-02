@@ -354,7 +354,6 @@ async function onAuthChanged(user) {
   }
 
   const hint = `Connecté(e) en tant que ${user.displayName || user.email}`;
-  document.getElementById("accueilEmail").textContent = hint;
   document.getElementById("accountEmailHint").textContent = hint;
 
   // Appliquer immédiatement les rôles admin bootstrap (sans attendre Firebase)
@@ -1340,8 +1339,12 @@ function updateAccueilPdpHint() {
   if (!hint) return;
   const prog = calculerProgression(MY_PDP || {});
   const commence = Object.values(prog.statuts).some(st => st !== "afaire");
+  const pct = document.getElementById("accueilPdpPct");
+  const bar = document.getElementById("accueilPdpBar");
+  if (pct) pct.textContent = `${prog.pct} %`;
+  if (bar) bar.style.width = `${prog.pct}%`;
   hint.textContent = commence
-    ? `${prog.terminees} étape${prog.terminees > 1 ? "s" : ""} terminée${prog.terminees > 1 ? "s" : ""} sur ${prog.total} (${prog.pct} %).`
+    ? `${prog.terminees} étape${prog.terminees > 1 ? "s" : ""} terminée${prog.terminees > 1 ? "s" : ""} sur ${prog.total}.`
     : "Remplis ton PDP pour démarrer ta Phase 2.";
 }
 
