@@ -292,6 +292,20 @@ function traduireErreur(err) {
   return "Une erreur est survenue. Réessaie.";
 }
 
+/* Connexion unique : sans compte connecté, on envoie vers l'accueil ABBA Bâtisseur (retour automatique ensuite).
+   Garde-fou : une seule redirection par minute ; si on revient sans être connecté, l'écran de connexion local s'affiche. */
+function allerALAccueil(extra) {
+  try {
+    const t = Number(sessionStorage.getItem("abba_redir") || 0);
+    if (t && Date.now() - t < 60000) return false;
+    sessionStorage.setItem("abba_redir", String(Date.now()));
+  } catch (e) { return false; }
+  const retour = location.pathname + location.search;
+  location.replace("/abba-batisseur/?" + (extra || ("retour=" + encodeURIComponent(retour))));
+  return true;
+}
+function accueilConnecte() { try { sessionStorage.removeItem("abba_redir"); } catch (e) {} }
+
 async function onAuthChanged(user) {
   // Nettoyer les listeners
   [unsubAdmins, unsubPDP, unsubRencontres, unsubConfirmations, unsubGrille, unsubEco, unsubMentors, unsubMyRole, unsubServices, unsubDossier, unsubPlan].forEach(fn => fn && fn());
@@ -305,12 +319,14 @@ async function onAuthChanged(user) {
   if (!user) {
     CURRENT_USER = null; IS_ADMIN = false; IS_MENTOR = false; ADMIN_OUVERT = false;
     const verrou0 = document.getElementById("paiementLock"); if (verrou0) verrou0.remove();
+    if (allerALAccueil()) return;
     document.getElementById("authScreen").style.display = "flex";
     document.getElementById("app").style.display = "none";
     return;
   }
 
   CURRENT_USER = user;
+  accueilConnecte();
   document.getElementById("authScreen").style.display = "none";
   document.getElementById("app").style.display = "";
   const verrou = document.getElementById("paiementLock");
