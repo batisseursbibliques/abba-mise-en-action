@@ -1116,5 +1116,13 @@
  "Ouvrir ce module dans le Parcours": "Open this module in the Course",
  "📖 Ouvrir": "📖 Open",
  "Tu portes ou tu rejoins un projet de l’Alliance. Chaque projet d’ABBA a son propre contrat de partenariat, qui fixe les règles de ce projet. Ce contrat te sera remis par le responsable du projet : lis-le avec lui avant de t’engager.": "You carry or join a project of the Alliance. Each ABBA project has its own partnership contract, which sets the rules of that project. The person in charge of the project will give it to you: read it with them before you commit.",
- "Lire avec le responsable le contrat de partenariat de ce projet, avant de t’engager.": "Read the partnership contract of this project with the person in charge, before you commit."
+ "Lire avec le responsable le contrat de partenariat de ce projet, avant de t’engager.": "Read the partnership contract of this project with the person in charge, before you commit.",
+ "Bienvenue 👋": "Welcome 👋",
+ "Bienvenue, {0} 👋": "Welcome, {0} 👋",
+ "🧭 Mes progressions": "🧭 My progress",
+ "Plan de développement": "Development plan",
+ "Rencontres": "Meetings",
+ "Service communautaire": "Community service",
+ "conditions remplies": "conditions met",
+ "minimum {0}": "minimum {0}"
 }

@@ -617,3 +617,20 @@ input[type="range"]{touch-action:pan-y;}
 .lead-test{background:var(--paper);border-radius:10px;padding:10px 12px;margin-bottom:10px;border-left:4px solid #2d6a3a;}
 .lead-test.vide{border-left-color:var(--brick);}
 .leadership-input[readonly]{background:transparent;border-color:transparent;font-weight:700;text-align:center;}
+
+/* Accueil : cercles de progression concentriques */
+.anneaux{display:flex;flex-direction:column;align-items:center;gap:14px;}
+.an-roue{position:relative;width:220px;height:220px;}
+.an-roue svg{display:block;width:100%;height:100%;transform:rotate(-90deg);}
+.an-piste{fill:none;stroke:var(--line);stroke-width:12;opacity:.6;}
+.an-arc{fill:none;stroke-width:12;stroke-linecap:round;transition:stroke-dasharray .5s ease;}
+.an-centre{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;}
+.an-centre b{font-family:var(--font-display);font-size:26px;color:var(--navy);line-height:1;}
+.an-centre small{font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);margin-top:4px;max-width:70px;}
+.an-legende{list-style:none;padding:0;margin:0;width:100%;}
+.an-ligne{display:grid;grid-template-columns:14px 1fr auto;column-gap:10px;align-items:center;width:100%;background:none;border:none;border-top:1px solid var(--line);padding:10px 2px;text-align:left;color:var(--ink);font:inherit;cursor:pointer;}
+.an-legende li:first-child .an-ligne{border-top:none;}
+.an-pastille{width:14px;height:14px;border-radius:50%;display:block;}
+.an-nom{font-weight:600;}
+.an-val{font-weight:700;color:var(--navy);}
+.an-min{grid-column:2 / 4;color:var(--ink-soft);font-size:12px;margin-top:2px;}

@@ -367,8 +367,9 @@ async function onAuthChanged(user) {
   const profile = await window.AbbaSync.getUserProfile(user.uid) || {};
   window.MY_NOM_AFFICHE = [profile.prenom, profile.nom].filter(Boolean).join(" ");
   if (typeof renderDeclaration === "function") renderDeclaration();
+  const prenomAccueil = profile.prenom || (user.displayName ? user.displayName.trim().split(" ")[0] : "");
   document.getElementById("accueilSalut").textContent =
-    profile.prenom ? `Bienvenue, ${profile.prenom} 👋` : "Phase 2 — Mise en Action";
+    prenomAccueil ? `Bienvenue, ${prenomAccueil} 👋` : "Bienvenue 👋";
 
   // S1 — mentor assigné (readonly)
   MY_ASSIGNMENT = await window.AbbaSync.getMyAssignment(user.uid);
@@ -1334,18 +1335,44 @@ function updatePdpProgress() {
   }
 }
 
-function updateAccueilPdpHint() {
-  const hint = document.getElementById("accueilPdpHint");
-  if (!hint) return;
-  const prog = calculerProgression(MY_PDP || {});
-  const commence = Object.values(prog.statuts).some(st => st !== "afaire");
-  const pct = document.getElementById("accueilPdpPct");
-  const bar = document.getElementById("accueilPdpBar");
-  if (pct) pct.textContent = `${prog.pct} %`;
-  if (bar) bar.style.width = `${prog.pct}%`;
-  hint.textContent = commence
-    ? `${prog.terminees} étape${prog.terminees > 1 ? "s" : ""} terminée${prog.terminees > 1 ? "s" : ""} sur ${prog.total}.`
-    : "Remplis ton PDP pour démarrer ta Phase 2.";
+// Accueil : cercles concentriques (un anneau par condition de la certification)
+function updateAccueilPdpHint() { majAnneauxAccueil(); }
+function majAnneauxAccueil() {
+  const zone = document.getElementById("accueilAnneaux");
+  if (!zone) return;
+  let ev;
+  try { ev = evaluerDossier(MY_PDP || {}, MY_RENCONTRES || {}, MY_CONFIRMATIONS || {}, (typeof MY_SERVICES !== "undefined" ? MY_SERVICES : {}) || {}); }
+  catch (e) { return; }
+  const r = ev.resume, prog = calculerProgression(MY_PDP || {});
+  const v = voieDe(MY_PDP || {});
+  const jReq = v ? Math.min(2, r.jalonsTotal) : 2;
+  const lignes = [
+    { goto: "pdp",      couleur: "var(--navy)",  nom: "Plan de développement", pct: prog.pct,                                   valeur: `${prog.pct} %`,                  min: "minimum 80 %" },
+    { goto: "rencontres", couleur: "var(--gold)", nom: "Rencontres",            pct: r.rencontres / 6 * 100,                      valeur: `${r.rencontres} / 6`,            min: "minimum 4" },
+    { goto: "bilan",    couleur: "var(--sage)",  nom: "Service communautaire", pct: Math.min(r.services, 1) * 100,               valeur: `${r.services}`,                  min: "minimum 1" },
+    { goto: "pdp",      couleur: "var(--brick)", nom: "Projet personnel",      pct: r.jalonsTotal ? r.jalons / r.jalonsTotal * 100 : 0, valeur: r.jalonsTotal ? `${r.jalons} / ${r.jalonsTotal}` : "—", min: `minimum ${jReq}` },
+  ];
+  const rayons = [92, 76, 60, 44];
+  const cercles = lignes.map((l, i) => {
+    const p = Math.max(0, Math.min(100, l.pct));
+    return `<circle cx="100" cy="100" r="${rayons[i]}" class="an-piste"/>` +
+      (p > 0 ? `<circle cx="100" cy="100" r="${rayons[i]}" class="an-arc" pathLength="100" stroke-dasharray="${p.toFixed(1)} 100" style="stroke:${l.couleur}"/>` : "");
+  }).join("");
+  const nbOk = ev.criteres.filter(c => c.ok).length;
+  zone.innerHTML = `
+    <div class="an-roue">
+      <svg viewBox="0 0 200 200" aria-hidden="true">${cercles}</svg>
+      <div class="an-centre"><b>${nbOk} / 4</b><small>conditions remplies</small></div>
+    </div>
+    <ul class="an-legende">${lignes.map(l => `
+      <li><button type="button" class="an-ligne" data-an-goto="${l.goto}">
+        <span class="an-pastille" style="background:${l.couleur}"></span>
+        <span class="an-nom">${l.nom}</span>
+        <span class="an-val">${l.valeur}</span>
+        <small class="an-min">${l.min}</small>
+      </button></li>`).join("")}
+    </ul>`;
+  zone.querySelectorAll("[data-an-goto]").forEach(b => b.addEventListener("click", () => { const t = document.querySelector(`.tab[data-tab="${b.dataset.anGoto}"]`); if (t) t.click(); }));
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -3084,6 +3111,7 @@ function renderDossier() {
   renderDossierFinal(st);
   renderServices();
   majJalonsVoie();
+  majAnneauxAccueil();
 }
 
 async function renderDossierFinal(st) {
