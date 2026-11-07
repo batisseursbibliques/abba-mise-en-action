@@ -646,3 +646,13 @@ input[type="range"]{touch-action:pan-y;}
 .plan-barre{position:relative;height:10px;border-radius:6px;background:var(--line,#e5e5e5);overflow:visible;margin:6px 0 8px;}
 .plan-barre span{display:block;height:100%;border-radius:6px;background:var(--brick,#b5432f);}
 .plan-barre i{position:absolute;top:-4px;width:2px;height:18px;background:var(--navy,#1d2b4f);}
+
+/* ===== Mode sombre : champs de saisie lisibles (fond sombre, texte clair, curseur visible) ===== */
+[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="button"]):not([type="submit"]),
+[data-theme="dark"] textarea,
+[data-theme="dark"] select{background-color:var(--card-bg);color:var(--ink);border-color:var(--line);caret-color:var(--ink);color-scheme:dark;}
+[data-theme="dark"] input::placeholder,[data-theme="dark"] textarea::placeholder{color:var(--ink-soft);opacity:.85;}
+[data-theme="dark"] select option{background:var(--card-bg);color:var(--ink);}
+[data-theme="dark"] input:-webkit-autofill,[data-theme="dark"] textarea:-webkit-autofill,[data-theme="dark"] select:-webkit-autofill{-webkit-text-fill-color:var(--ink);box-shadow:0 0 0 1000px var(--card-bg) inset;}
+[data-theme="dark"] .corr-box{background:var(--brick-soft);}
+[data-theme="dark"] .decl-text p.tts-now{background:rgba(217,181,75,.28);}

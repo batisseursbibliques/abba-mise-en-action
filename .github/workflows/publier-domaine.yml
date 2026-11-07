@@ -4,8 +4,8 @@ name: Publier sur batisseursbibliques.org
 # Ce dépôt reste la SEULE source de l'app : à chaque envoi sur main, ses fichiers sont copiés
 # automatiquement dans abba-gestion/public/abba-mise-en-action, ce qui déclenche le déploiement.
 #
-# ⚠️ Tout NOUVEAU fichier statique de l'application doit être ajouté à la liste « cp » ci-dessous,
-# sinon il n'arrive jamais sur le site.
+# Tout le dépôt est copié, sauf les fichiers internes (.git, .github, scripts, documentation .md) :
+# un nouveau fichier de l'application arrive donc tout seul sur le site, sans liste à tenir à jour.
 # Les règles Firestore ne sont PAS copiées ici : leur source unique est ABBA-Parcours/firestore.rules.
 on:
   push:
@@ -54,8 +54,12 @@ jobs:
           D=public/abba-mise-en-action
           rm -rf "$D" && mkdir -p "$D"
           cd ../src
-          cp -r index.html app.js sync.js voies.js ministeres.js declaration.js voixNative.js jspdf.umd.min.js i18n.js lang style.css sw.js manifest.json firebase-config.js logo.png icon-192.png icon-512.png ../gest/$D/
+          # Copie TOUT le dépôt sauf ce qui est interne (fichiers de configuration, scripts, documentation) :
+          # un nouveau fichier de l'application est donc publié automatiquement, sans liste à tenir à jour.
+          tar --exclude=./.git --exclude=./.github --exclude=./scripts --exclude=./firebase.json --exclude=./.firebaserc --exclude=./.gitignore --exclude='./*.md' --exclude=./node_modules --exclude=./package.json --exclude=./package-lock.json -cf - . | tar -C "../gest/$D" -xf -
           cd ../gest
+          # Filet de sécurité : refuse de publier si un fichier utilisé par l'app n'a pas été copié
+          python3 ../src/scripts/verifier-publication.py ../src "$D"
           git config user.name "Publication automatique"
           git config user.email "noreply@batisseursbibliques.org"
           git add -A "$D"
