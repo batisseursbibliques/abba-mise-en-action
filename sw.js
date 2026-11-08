@@ -1,8 +1,13 @@
-const CACHE = "abba-mea-v43";
+const CACHE = "abba-mea-v44";
 const ASSETS = [
   "./", "./index.html", "./style.css", "./app.js", "./sync.js", "./voies.js", "./ministeres.js", "./declaration.js", "./voixNative.js", "./i18n.js", "./lang/en.json",
   "./firebase-config.js", "./manifest.json", "./logo.png",
   "./icon-192.png", "./icon-512.png",
+  "/abba-batisseur/habillage.css", "/abba-batisseur/habillage.js", "/abba-batisseur/barre.js", "/abba-batisseur/fond-accueil.webp",
+  // La bibliothèque Firebase elle-même (fichiers versionnés) : indispensable pour que l'app puisse démarrer SANS connexion.
+  "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js",
+  "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js",
+  "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js",
 ];
 
 // Le réseau d'abord (toujours la dernière version quand il y a du réseau, sans passer par le cache HTTP du téléphone),
@@ -40,7 +45,13 @@ self.addEventListener("activate", e => {
 self.addEventListener("fetch", e => {
   const url = new URL(e.request.url);
 
-  // Firebase, Google APIs : réseau uniquement (pas de cache)
+  // Bibliothèque Firebase (fichiers versionnés) : le cache d'abord, pour démarrer sans connexion
+  if (e.request.method === "GET" && url.hostname === "www.gstatic.com" && url.pathname.startsWith("/firebasejs/")) {
+    e.respondWith(caches.match(e.request).then((hit) => hit || fetch(e.request).then((res) => { if (res.ok) { const c = res.clone(); caches.open(CACHE).then((x) => x.put(e.request, c)); } return res; })));
+    return;
+  }
+
+  // Les vraies requêtes Firebase / Google (données, connexion) : réseau uniquement, jamais en cache
   if (url.hostname.includes("firebase") ||
       url.hostname.includes("googleapis") ||
       url.hostname.includes("gstatic") ||
