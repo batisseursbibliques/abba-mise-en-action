@@ -1,7 +1,7 @@
-const CACHE = "abba-mea-v44";
+const CACHE = "abba-mea-v45";
 const ASSETS = [
   "./", "./index.html", "./style.css", "./app.js", "./sync.js", "./voies.js", "./ministeres.js", "./declaration.js", "./voixNative.js", "./i18n.js", "./lang/en.json",
-  "./firebase-config.js", "./manifest.json", "./logo.png",
+  "./firebase-config.js", "./manifest.json", "./logo.png", "./jspdf.umd.min.js", "/bible/index.json",
   "./icon-192.png", "./icon-512.png",
   "/abba-batisseur/habillage.css", "/abba-batisseur/habillage.js", "/abba-batisseur/barre.js", "/abba-batisseur/fond-accueil.webp",
   // La bibliothèque Firebase elle-même (fichiers versionnés) : indispensable pour que l'app puisse démarrer SANS connexion.
@@ -61,5 +61,7 @@ self.addEventListener("fetch", e => {
 
   // Fichiers de l'app : le réseau d'abord, le cache en secours
   if (e.request.method !== "GET") return;
+  // Les livres de la Bible sont gardés dans la base du téléphone (IndexedDB) par l'application : pas de double copie ici
+  if (url.pathname.startsWith("/bible/") && url.pathname !== "/bible/index.json") return;
   e.respondWith(reseauPuisCache(e.request, CACHE));
 });

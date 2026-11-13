@@ -380,6 +380,7 @@ async function onAuthChanged(user) {
     startAllMentorsList();
   }
 
+  setTimeout(bibleTelechargementAuto, 8000);
   // Charger profil utilisateur
   const profile = await window.AbbaSync.getUserProfile(user.uid) || {};
   window.MY_NOM_AFFICHE = [profile.prenom, profile.nom].filter(Boolean).join(" ");
@@ -2136,13 +2137,56 @@ function analyserRefBible(ref) {   // « 1 Corinthiens 8:4-6 » → { livre, cha
   if (i < 0) return null;
   return { livre: i + 1, chapitre: +m[2], verset: m[3] ? +m[3] : 1, fin: m[3] ? (m[4] ? +m[4] : +m[3]) : Infinity };
 }
+// Les textes sont gardés sur le téléphone (même base « abba-bible » que le Parcours, ABBA Life et ABBA Gestion : un livre téléchargé dans l'un sert aux autres)
+let _bibleDb = null;
+function bibleDb() {
+  if (!_bibleDb) _bibleDb = new Promise((ok, ko) => {
+    const r = indexedDB.open("abba-bible", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("kv");
+    r.onsuccess = () => ok(r.result); r.onerror = () => ko(r.error);
+  });
+  return _bibleDb;
+}
+const bibleLire = (cle) => bibleDb().then((db) => new Promise((ok, ko) => { const r = db.transaction("kv", "readonly").objectStore("kv").get(cle); r.onsuccess = () => ok(r.result); r.onerror = () => ko(r.error); })).catch(() => undefined);
+const bibleEcrire = (cle, val) => bibleDb().then((db) => new Promise((ok, ko) => { const r = db.transaction("kv", "readwrite").objectStore("kv").put(val, cle); r.onsuccess = () => ok(true); r.onerror = () => ko(r.error); })).catch(() => false);
 async function chargerLivreBible(version, numero) {
   const cle = version + "/" + numero;
   if (BIBLE_LIVRES_CACHE[cle]) return BIBLE_LIVRES_CACHE[cle];
+  const local = await bibleLire("s:" + cle);
+  if (local) return (BIBLE_LIVRES_CACHE[cle] = local);
   const r = await fetch(`/bible/${version}/${String(numero).padStart(2, "0")}.json`);
   if (!r.ok) throw new Error("indisponible");
-  return (BIBLE_LIVRES_CACHE[cle] = await r.json());
+  const donnees = await r.json();
+  bibleEcrire("s:" + cle, donnees);
+  return (BIBLE_LIVRES_CACHE[cle] = donnees);
 }
+// Téléchargement silencieux des versions françaises (versets de référence) dès que la personne est connectée avec du réseau
+let _bibleAuto = false;
+async function bibleTelechargementAuto() {
+  if (_bibleAuto || navigator.onLine === false) return;
+  _bibleAuto = true;
+  try {
+    const idx = await (await fetch("/bible/index.json")).json();
+    const versions = (idx.versions || []).filter((v) => v.langue !== "en");
+    const taches = [];
+    versions.forEach((v) => { for (let n = 1; n <= 66; n++) taches.push([v.id, n]); });
+    let pos = 0;
+    const ouvrier = async () => {
+      while (pos < taches.length) {
+        if (navigator.onLine === false) return;
+        const [v, n] = taches[pos++];
+        try {
+          if ((await bibleLire(`s:${v}/${n}`)) !== undefined) continue;
+          const r = await fetch(`/bible/${v}/${String(n).padStart(2, "0")}.json`);
+          if (r.ok) await bibleEcrire(`s:${v}/${n}`, await r.json());
+        } catch (e) { /* repris à la prochaine ouverture avec réseau */ }
+      }
+    };
+    await Promise.all([ouvrier(), ouvrier(), ouvrier()]);
+  } catch (e) { /* hors connexion : on reprendra plus tard */ }
+  _bibleAuto = false;
+}
+window.addEventListener("online", () => { if (CURRENT_USER) setTimeout(bibleTelechargementAuto, 4000); });
 async function texteRefBible(ref, version) {
   try {
     const r = analyserRefBible(ref); if (!r) return "";

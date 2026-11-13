@@ -11,7 +11,7 @@ import {
 import {
   getFirestore, doc, getDoc, setDoc, deleteDoc,
   onSnapshot, serverTimestamp, collection, getDocs, query, where,
-  enableIndexedDbPersistence, deleteField, writeBatch,
+  enableIndexedDbPersistence, getDocFromCache, deleteField, writeBatch,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { firebaseConfig, ADMIN_EMAILS } from "./firebase-config.js";
 
@@ -38,8 +38,18 @@ async function logIn(email, password) {
 }
 async function logOut() { await signOut(auth); }
 function watchAuth(callback) { onAuthStateChanged(auth, callback); }
+/* Lecture ponctuelle de ses propres données qui ne casse pas hors connexion : réseau d'abord, puis la copie gardée sur le téléphone, sinon « rien trouvé ».
+   (Les portes d'accès — certificat, paiement, rôles — gardent leur lecture directe : en cas d'erreur de réseau elles n'empêchent pas l'entrée.) */
+const _horsReseau = (e) => (typeof navigator !== "undefined" && navigator.onLine === false) || /unavailable|offline|network|failed-precondition/i.test(String((e && (e.code || e.message)) || ""));
+const _docVide = (ref) => ({ exists: () => false, data: () => undefined, id: ref.id, ref, metadata: { fromCache: true } });
+async function lireDoc(ref) {
+  try { return await getDoc(ref); } catch (e) {
+    if (!_horsReseau(e)) throw e;
+    try { return await getDocFromCache(ref); } catch (e2) { return _docVide(ref); }
+  }
+}
 async function getUserProfile(uid) {
-  const snap = await getDoc(doc(db, "users", uid));
+  const snap = await lireDoc(doc(db, "users", uid));
   return snap.exists() ? snap.data() : null;
 }
 
@@ -161,7 +171,7 @@ async function loadAllConfirmations() {
   return out;
 }
 async function getMyAssignment(batisseurUid) {
-  const snap = await getDoc(doc(db, "mea_assignments", batisseurUid));
+  const snap = await lireDoc(doc(db, "mea_assignments", batisseurUid));
   return snap.exists() ? snap.data() : null;
 }
 async function loadAllAssignments() {
@@ -286,7 +296,7 @@ async function savePratiques(uid, pratiques) {
   await setDoc(privRef(uid, "mea_semaines"), { pratiques, updatedAt: serverTimestamp() }, { merge: true });
 }
 async function getGrilleOf(uid) {
-  const snap = await getDoc(privRef(uid, "mea_semaines"));
+  const snap = await lireDoc(privRef(uid, "mea_semaines"));
   return snap.exists() ? snap.data() : {};
 }
 
@@ -304,7 +314,7 @@ async function saveMoisEco(uid, cle, data) {
   await setDoc(privRef(uid, "mea_economie"), { mois: { [cle]: { ...data, updatedAt: serverTimestamp() } }, updatedAt: serverTimestamp() }, { merge: true });
 }
 async function getEconomieOf(uid) {
-  const snap = await getDoc(privRef(uid, "mea_economie"));
+  const snap = await lireDoc(privRef(uid, "mea_economie"));
   return snap.exists() ? snap.data() : {};
 }
 async function saveVuEco(uid, cle, data) {
@@ -322,14 +332,14 @@ function watchMyConfirmations(uid, callback) {
     (err) => { console.error("watch mea_confirmations:", err); callback({}); });
 }
 async function getConfirmations(uid) {
-  const snap = await getDoc(doc(db, "mea_confirmations", uid));
+  const snap = await lireDoc(doc(db, "mea_confirmations", uid));
   return snap.exists() ? snap.data() : {};
 }
 async function saveDerniereConfirmee(uid, dateStr) {
   await setDoc(doc(db, "mea_confirmations", uid), { derniereConfirmeeLe: dateStr }, { merge: true });
 }
 async function getRencontresOf(uid) {
-  const snap = await getDoc(privRef(uid, "mea_rencontres"));
+  const snap = await lireDoc(privRef(uid, "mea_rencontres"));
   return snap.exists() ? snap.data() : {};
 }
 async function saveConfirmation(uid, moisKey, data) {
@@ -398,7 +408,7 @@ async function loadAllUsers() {
 
 // Lecture unique du PDP d'un bâtisseur (par le mentor ou l'admin)
 async function readPDPOnce(uid) {
-  const snap = await getDoc(doc(db, "users", uid, "priv", "mea_pdp"));
+  const snap = await lireDoc(doc(db, "users", uid, "priv", "mea_pdp"));
   return snap.exists() ? snap.data() : null;
 }
 
@@ -569,7 +579,7 @@ function watchMyServices(uid, callback) {
     (err) => { console.error("watch mea_services:", err); callback({}); });
 }
 async function getServicesOf(uid) {
-  const snap = await getDoc(privRef(uid, "mea_services"));
+  const snap = await lireDoc(privRef(uid, "mea_services"));
   return snap.exists() ? (snap.data().services || {}) : {};
 }
 async function saveService(uid, id, data) {
@@ -590,7 +600,7 @@ function watchMyPlan(uid, callback) {
     (err) => { console.error("watch mea_plan:", err); callback({}); });
 }
 async function getPlanOf(uid) {
-  const snap = await getDoc(privRef(uid, "mea_plan"));
+  const snap = await lireDoc(privRef(uid, "mea_plan"));
   return snap.exists() ? snap.data() : {};
 }
 async function savePlanAction(uid, id, data, debut) {
@@ -618,7 +628,7 @@ function watchMyDossier(uid, callback) {
     (err) => { console.error("watch mea_dossiers:", err); callback({}); });
 }
 async function getDossier(uid) {
-  const snap = await getDoc(doc(db, "mea_dossiers", uid));
+  const snap = await lireDoc(doc(db, "mea_dossiers", uid));
   return snap.exists() ? snap.data() : {};
 }
 async function saveDossierMentor(uid, data) {
